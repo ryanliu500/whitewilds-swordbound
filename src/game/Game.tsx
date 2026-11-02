@@ -48,7 +48,7 @@ function Terrain() {
   const geo = useMemo(() => {
     const g = new THREE.PlaneGeometry(WORLD_R * 2.4, WORLD_R * 2.4, 160, 160);
     g.rotateX(-Math.PI / 2);
-    const p = g.attributes.position;
+    const p = g.getAttribute("position");
     for (let i = 0; i < p.count; i++) p.setY(i, heightAt(p.getX(i), p.getZ(i)));
     const ng = g.toNonIndexed();
     ng.computeVertexNormals();
@@ -163,14 +163,14 @@ function Player() {
     const dt = Math.min(d, 0.05);
     const g = group.current!;
     const c = cam.current;
-    const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
-    const s = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
+    const f = (keys["KeyW"] ? 1 : 0) - (keys["KeyS"] ? 1 : 0);
+    const s = (keys["KeyD"] ? 1 : 0) - (keys["KeyA"] ? 1 : 0);
     const fwd = new THREE.Vector3(-Math.sin(c.yaw), 0, -Math.cos(c.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     const dir = fwd.multiplyScalar(f).add(right.multiplyScalar(s));
     if (dir.lengthSq() > 0) {
       dir.normalize();
-      const sp = SPEED * (keys.ShiftLeft ? SPRINT : 1);
+      const sp = SPEED * (keys["ShiftLeft"] ? SPRINT : 1);
       const nx = g.position.x + dir.x * sp * dt, nz = g.position.z + dir.z * sp * dt;
       if (Math.hypot(nx, nz) < WORLD_R - 100 && heightAt(nx, nz) > -22) { g.position.x = nx; g.position.z = nz; }
       g.rotation.y = Math.atan2(dir.x, dir.z);
