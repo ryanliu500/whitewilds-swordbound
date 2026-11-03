@@ -8,3 +8,4 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+- vite.config.ts strips devtools' data-tsd-source attributes from src/game/ files: React Three Fiber crashes on dashed props it can't resolve.
