@@ -337,8 +337,8 @@ export default function Game() {
   return (
     <div className="relative h-screen w-screen" data-scene-ready>
       <Canvas shadows camera={{ fov: 60, near: 0.5, far: 9000 }}>
-        <color attach="background" args={["#eef1f4"]} />
-        <fog attach="fog" args={["#eef1f4", 300, 2600]} />
+        <color attach="background" args={["#6fb8e8"]} />
+        <fog attach="fog" args={["#c8e2f4", 300, 2600]} />
         <hemisphereLight args={["#ffffff", "#c8c2b8", 1.1]} />
         <Terrain />
         <Ocean />
