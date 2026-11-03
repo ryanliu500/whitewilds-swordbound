@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 // World is ~6km across (half-ish of a BOTW/RDR2 style map, scaled for web).
-const WORLD_R = 3000; // playable radius
+const WORLD_R = 3500; // playable radius
 const MOUNTAIN_R = 2700;
 const SPEED = 14;
 const SPRINT = 2.2;
@@ -26,6 +26,8 @@ const TOWNS: [number, number, number][] = [
   [600, 1300, 0.3],
   [-700, -1400, 0.25],
 ];
+export const ISLAND: [number, number] = [Math.cos(2.2) * 3250, Math.sin(2.2) * 3250];
+const WATER_Y = -25, SWIM = 6, STAMINA_MAX = 30;
 export function heightAt(x: number, z: number) {
   const r = Math.hypot(x, z);
   let h = noise(x / 400, z / 400) * 60 + noise(x / 150, z / 150) * 15 - 20;
@@ -41,6 +43,9 @@ export function heightAt(x: number, z: number) {
     else h += Math.sin(Math.min(t, 1) * Math.PI) * (350 + noise(ang * 8, 1) * 350);
   }
   if (r > MOUNTAIN_R) h -= (r - MOUNTAIN_R) * 0.5;
+  // starter island off the coast, beyond the mountain gap
+  const di = Math.hypot(x - ISLAND[0], z - ISLAND[1]);
+  if (di < 240) h = Math.max(h, Math.min(45, -45 + (1 - di / 240) * 160) + noise(x / 30, z / 30) * 4);
   return h;
 }
 
@@ -131,7 +136,7 @@ function Settlements() {
 }
 
 const keys: Record<string, boolean> = {};
-const player = { x: 0, z: 300, rot: 0 };
+const player = { x: ISLAND[0], z: ISLAND[1], rot: 0, stamina: STAMINA_MAX, swimming: false, drowned: 0 };
 
 function Player() {
   const group = useRef<THREE.Group>(null);
@@ -171,13 +176,20 @@ function Player() {
     const dir = fwd.multiplyScalar(f).add(right.multiplyScalar(s));
     if (dir.lengthSq() > 0) {
       dir.normalize();
-      const sp = SPEED * (keys["ShiftLeft"] ? SPRINT : 1);
+      const sp = player.swimming ? SWIM : SPEED * (keys["ShiftLeft"] ? SPRINT : 1);
       const nx = g.position.x + dir.x * sp * dt, nz = g.position.z + dir.z * sp * dt;
-      if (Math.hypot(nx, nz) < WORLD_R - 100 && heightAt(nx, nz) > -22) { g.position.x = nx; g.position.z = nz; }
+      if (Math.hypot(nx, nz) < WORLD_R - 50) { g.position.x = nx; g.position.z = nz; }
       g.rotation.y = Math.atan2(dir.x, dir.z);
       walk.current += dt * sp * 0.8;
     }
-    g.position.y = heightAt(g.position.x, g.position.z);
+    const ground = heightAt(g.position.x, g.position.z);
+    player.swimming = ground < WATER_Y - 1.5;
+    g.position.y = player.swimming ? WATER_Y - 1.6 : ground;
+    player.stamina = player.swimming ? player.stamina - dt : Math.min(STAMINA_MAX, player.stamina + dt * 6);
+    if (player.stamina <= 0) {
+      g.position.set(ISLAND[0], heightAt(ISLAND[0], ISLAND[1]), ISLAND[1]);
+      player.stamina = STAMINA_MAX; player.drowned = performance.now();
+    }
     player.x = g.position.x; player.z = g.position.z; player.rot = g.rotation.y;
     const sw = Math.sin(walk.current) * 0.6 * (dir.lengthSq() > 0 ? 1 : 0);
     legL.current!.rotation.x = sw; legR.current!.rotation.x = -sw;
@@ -201,7 +213,7 @@ function Player() {
     <>
       <directionalLight ref={sun} intensity={2.2} castShadow shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-120} shadow-camera-right={120} shadow-camera-top={120} shadow-camera-bottom={-120} shadow-camera-far={500} shadow-bias={-0.0005} />
-      <group ref={group} position={[0, 0, 300]}>
+      <group ref={group} position={[ISLAND[0], 0, ISLAND[1]]}>
         {/* low-poly hero: cloak, head, hood, legs, sword */}
         <mesh position-y={1.6} castShadow><cylinderGeometry args={[0.35, 0.6, 1.3, 6]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
         <mesh position-y={2.55} castShadow><icosahedronGeometry args={[0.35, 0]} /><meshStandardMaterial color="#e8c9a8" flatShading /></mesh>
@@ -214,7 +226,7 @@ function Player() {
   );
 }
 
-const MAP_EXT = 3200; // map covers -MAP_EXT..MAP_EXT
+const MAP_EXT = 3600; // map covers -MAP_EXT..MAP_EXT
 const TOWN_NAMES = ["Capital", "Eastmere", "Westbrook", "Southvale", "Northhold"];
 let mapImg: HTMLCanvasElement | null = null;
 function getMapImage() {
@@ -283,6 +295,32 @@ function FullMap() {
   return <canvas ref={ref} width={560} height={560} className="max-h-[70vh] max-w-full rounded-md border border-border" />;
 }
 
+function StaminaHud() {
+  const bar = useRef<HTMLDivElement>(null), wrap = useRef<HTMLDivElement>(null), msg = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      const f = player.stamina / STAMINA_MAX;
+      if (bar.current) { bar.current.style.width = f * 100 + "%"; bar.current.style.opacity = f < 0.3 ? "0.6" : "1"; }
+      if (wrap.current) wrap.current.style.opacity = f < 1 ? "1" : "0";
+      if (msg.current) msg.current.style.opacity = performance.now() - player.drowned < 3000 ? "1" : "0";
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <>
+      <div ref={wrap} className="pointer-events-none absolute bottom-8 left-1/2 h-3 w-64 -translate-x-1/2 overflow-hidden rounded-full border border-border bg-background/60 transition-opacity">
+        <div ref={bar} className="h-full bg-primary" />
+      </div>
+      <div ref={msg} className="pointer-events-none absolute left-1/2 top-1/3 -translate-x-1/2 text-2xl font-semibold text-foreground opacity-0 transition-opacity">
+        You drowned. The sea is too wide to swim…
+      </div>
+    </>
+  );
+}
+
 export default function Game() {
   const [menu, setMenu] = useState(false);
   const wasLocked = useRef(false);
@@ -308,6 +346,7 @@ export default function Game() {
         <Player />
       </Canvas>
       <MiniMap />
+      <StaminaHud />
       <div className="pointer-events-none absolute left-4 top-4 rounded-md bg-background/70 px-3 py-2 text-xs text-foreground">
         Click to look · WASD move · Shift sprint · Scroll zoom · Esc menu & map
       </div>
