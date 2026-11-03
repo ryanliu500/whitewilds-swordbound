@@ -229,7 +229,7 @@ function getMapImage() {
     if (h < -22) col = [159, 196, 214];
     else if (h > 120) col = [200, 196, 190].map((v) => Math.min(255, v + (h - 120) * 0.15));
     else col = [232 - h * 0.3, 234 - h * 0.25, 226 - h * 0.4];
-    img.data.set([col[0], col[1], col[2], 255], k);
+    img.data.set([col[0]!, col[1]!, col[2]!, 255], k);
   }
   ctx.putImageData(img, 0, 0);
   ctx.fillStyle = "#8a7b6c";
@@ -277,7 +277,7 @@ function FullMap() {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(img, 0, 0, S, S);
     ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#3e3a36";
-    TOWNS.forEach(([tx, tz], i) => ctx.fillText(TOWN_NAMES[i], ((tx + MAP_EXT) / (2 * MAP_EXT)) * S, ((tz + MAP_EXT) / (2 * MAP_EXT)) * S + 4));
+    TOWNS.forEach(([tx, tz], i) => ctx.fillText(TOWN_NAMES[i] ?? "", ((tx + MAP_EXT) / (2 * MAP_EXT)) * S, ((tz + MAP_EXT) / (2 * MAP_EXT)) * S + 4));
     drawArrow(ctx, ((player.x + MAP_EXT) / (2 * MAP_EXT)) * S, ((player.z + MAP_EXT) / (2 * MAP_EXT)) * S, player.rot);
   }, []);
   return <canvas ref={ref} width={560} height={560} className="max-h-[70vh] max-w-full rounded-md border border-border" />;
