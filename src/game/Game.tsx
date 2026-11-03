@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 // World is ~6km across (half-ish of a BOTW/RDR2 style map, scaled for web).
@@ -131,6 +131,7 @@ function Settlements() {
 }
 
 const keys: Record<string, boolean> = {};
+const player = { x: 0, z: 300, rot: 0 };
 
 function Player() {
   const group = useRef<THREE.Group>(null);
@@ -177,6 +178,7 @@ function Player() {
       walk.current += dt * sp * 0.8;
     }
     g.position.y = heightAt(g.position.x, g.position.z);
+    player.x = g.position.x; player.z = g.position.z; player.rot = g.rotation.y;
     const sw = Math.sin(walk.current) * 0.6 * (dir.lengthSq() > 0 ? 1 : 0);
     legL.current!.rotation.x = sw; legR.current!.rotation.x = -sw;
     const target = g.position.clone().add(new THREE.Vector3(0, 2, 0));
@@ -212,7 +214,88 @@ function Player() {
   );
 }
 
+const MAP_EXT = 3200; // map covers -MAP_EXT..MAP_EXT
+const TOWN_NAMES = ["Capital", "Eastmere", "Westbrook", "Southvale", "Northhold"];
+let mapImg: HTMLCanvasElement | null = null;
+function getMapImage() {
+  if (mapImg) return mapImg;
+  const N = 320, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const ctx = c.getContext("2d")!, img = ctx.createImageData(N, N);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = (i / N) * 2 * MAP_EXT - MAP_EXT, z = (j / N) * 2 * MAP_EXT - MAP_EXT;
+    const h = heightAt(x, z), k = (j * N + i) * 4;
+    let col: number[];
+    if (h < -22) col = [159, 196, 214];
+    else if (h > 120) col = [200, 196, 190].map((v) => Math.min(255, v + (h - 120) * 0.15));
+    else col = [232 - h * 0.3, 234 - h * 0.25, 226 - h * 0.4];
+    img.data.set([col[0]!, col[1]!, col[2]!, 255], k);
+  }
+  ctx.putImageData(img, 0, 0);
+  ctx.fillStyle = "#8a7b6c";
+  for (const [tx, tz, s] of TOWNS) {
+    ctx.beginPath();
+    ctx.arc(((tx + MAP_EXT) / (2 * MAP_EXT)) * N, ((tz + MAP_EXT) / (2 * MAP_EXT)) * N, (450 * s + 60) / (2 * MAP_EXT) * N, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.35; ctx.fill(); ctx.globalAlpha = 1;
+  }
+  mapImg = c;
+  return c;
+}
+function drawArrow(ctx: CanvasRenderingContext2D, x: number, y: number, rot: number) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(-rot);
+  ctx.fillStyle = "#c0392b"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, 8); ctx.lineTo(6, -6); ctx.lineTo(0, -3); ctx.lineTo(-6, -6); ctx.closePath();
+  ctx.stroke(); ctx.fill(); ctx.restore();
+}
+
+function MiniMap() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const img = getMapImage(), S = 160, view = 500;
+    const loop = () => {
+      const ctx = ref.current?.getContext("2d");
+      if (ctx) {
+        const px = ((player.x + MAP_EXT) / (2 * MAP_EXT)) * img.width, pz = ((player.z + MAP_EXT) / (2 * MAP_EXT)) * img.height;
+        const v = (view / (2 * MAP_EXT)) * img.width;
+        ctx.clearRect(0, 0, S, S);
+        ctx.drawImage(img, px - v, pz - v, v * 2, v * 2, 0, 0, S, S);
+        drawArrow(ctx, S / 2, S / 2, player.rot);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return <canvas ref={ref} width={160} height={160} className="pointer-events-none absolute right-4 top-4 rounded-full border-2 border-border shadow-lg" />;
+}
+
+function FullMap() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const ctx = ref.current!.getContext("2d")!, S = 560, img = getMapImage();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, 0, 0, S, S);
+    ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#3e3a36";
+    TOWNS.forEach(([tx, tz], i) => ctx.fillText(TOWN_NAMES[i] ?? "", ((tx + MAP_EXT) / (2 * MAP_EXT)) * S, ((tz + MAP_EXT) / (2 * MAP_EXT)) * S + 4));
+    drawArrow(ctx, ((player.x + MAP_EXT) / (2 * MAP_EXT)) * S, ((player.z + MAP_EXT) / (2 * MAP_EXT)) * S, player.rot);
+  }, []);
+  return <canvas ref={ref} width={560} height={560} className="max-h-[70vh] max-w-full rounded-md border border-border" />;
+}
+
 export default function Game() {
+  const [menu, setMenu] = useState(false);
+  const wasLocked = useRef(false);
+  useEffect(() => {
+    const plc = () => {
+      const locked = !!document.pointerLockElement;
+      if (!locked && wasLocked.current) setMenu(true);
+      wasLocked.current = locked;
+    };
+    const kd = (e: KeyboardEvent) => { if (e.code === "Escape" && !document.pointerLockElement) setMenu((m) => !m); };
+    document.addEventListener("pointerlockchange", plc); addEventListener("keydown", kd);
+    return () => { document.removeEventListener("pointerlockchange", plc); removeEventListener("keydown", kd); };
+  }, []);
   return (
     <div className="relative h-screen w-screen" data-scene-ready>
       <Canvas shadows camera={{ fov: 60, near: 0.5, far: 9000 }}>
@@ -224,9 +307,17 @@ export default function Game() {
         <Settlements />
         <Player />
       </Canvas>
+      <MiniMap />
       <div className="pointer-events-none absolute left-4 top-4 rounded-md bg-background/70 px-3 py-2 text-xs text-foreground">
-        Click to look · WASD move · Shift sprint · Scroll zoom · Esc release mouse
+        Click to look · WASD move · Shift sprint · Scroll zoom · Esc menu & map
       </div>
+      {menu && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background/80 p-4 backdrop-blur-sm">
+          <h2 className="text-2xl font-semibold text-foreground">Paused</h2>
+          <FullMap />
+          <button onClick={() => setMenu(false)} className="rounded-md bg-primary px-6 py-2 text-primary-foreground">Resume</button>
+        </div>
+      )}
     </div>
   );
 }
