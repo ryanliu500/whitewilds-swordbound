@@ -8,7 +8,7 @@ import { RULES, createGame, emptyInput, step, type GameState } from "./sim/game"
 import WorldScene from "./WorldScene";
 import Camp from "./Camp";
 import Enemies from "./Enemies";
-import { Model, PALETTE } from "./Models";
+import { PALETTE } from "./Models";
 
 const game: GameState = createGame();
 const keys: Record<string, boolean> = {};
@@ -23,7 +23,9 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
   const sword = useRef<THREE.Mesh>(null);
   const sun = useRef<THREE.DirectionalLight>(null);
   const acc = useRef(0);
-  const [moving, setMoving] = useState(false);
+  const arm = useRef<THREE.Group>(null);
+  const legL = useRef<THREE.Mesh>(null), legR = useRef<THREE.Mesh>(null);
+  const walk = useRef(0);
 
   useEffect(() => {
     const el = gl.domElement;
@@ -72,12 +74,19 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     step(game, i, d);
     const p = game.player;
     if (hero.current) { hero.current.position.set(p.x, p.y, p.z); hero.current.rotation.y = p.rot; }
-    if (sword.current) {
-      sword.current.rotation.x = p.attack > 0 ? -Math.PI * (p.attack / 0.32) : p.blocking ? -1.2 : -0.3;
-      sword.current.position.x = p.blocking ? 0 : 0.55;
-    }
     const isMoving = (i.forward !== 0 || i.strafe !== 0) && !paused;
-    if (isMoving !== moving) setMoving(isMoving);
+    if (isMoving) walk.current += Math.min(d, 0.05) * 11;
+    const sw = isMoving && p.grounded ? Math.sin(walk.current) * 0.6 : 0;
+    if (legL.current) legL.current.rotation.x = sw;
+    if (legR.current) legR.current.rotation.x = -sw;
+    if (arm.current) {
+      // swing: raised overhead -> slashed down-forward
+      const t = p.attack > 0 ? 1 - p.attack / 0.32 : -1;
+      if (t >= 0) { arm.current.rotation.x = -2.6 + t * 3.0; arm.current.rotation.z = 0.4 - t * 0.8; arm.current.rotation.y = 0; }
+      else if (p.blocking) { arm.current.rotation.x = -1.5; arm.current.rotation.z = 0; arm.current.rotation.y = -1.2; }
+      else { arm.current.rotation.x = 0.35 - sw * 0.4; arm.current.rotation.z = 0.15; arm.current.rotation.y = 0; }
+    }
+    void sword;
     const t = new THREE.Vector3(p.x, p.y + 2, p.z);
     camera.position.set(t.x + Math.sin(c.yaw) * Math.cos(c.pitch) * c.dist, t.y + Math.sin(c.pitch) * c.dist, t.z + Math.cos(c.yaw) * Math.cos(c.pitch) * c.dist);
     camera.position.y = Math.max(camera.position.y, heightAt(camera.position.x, camera.position.z) + 1);
@@ -96,13 +105,20 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
       <directionalLight ref={sun} intensity={2.2} castShadow shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-80} shadow-camera-right={80} shadow-camera-top={80} shadow-camera-bottom={-80} shadow-camera-far={400} shadow-bias={-0.0005} />
       <group ref={hero}>
-        <Suspense fallback={null}>
-          <Model kind="hero" height={2.4} animation={!game.player.grounded ? "jump" : moving ? "walk" : "idle"} />
-        </Suspense>
-        <mesh ref={sword} position={[0.55, 1.3, 0.3]} castShadow>
-          <boxGeometry args={[0.08, 0.08, 1.4]} />
-          <meshStandardMaterial color={PALETTE.metal} metalness={0.6} />
-        </mesh>
+        {/* sleek low-poly hero: cloak, head, hood, legs, sword arm */}
+        <mesh position-y={1.6} castShadow><cylinderGeometry args={[0.35, 0.6, 1.3, 6]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
+        <mesh position-y={2.55} castShadow><icosahedronGeometry args={[0.35, 0]} /><meshStandardMaterial color="#e8c9a8" flatShading /></mesh>
+        <mesh position-y={2.75} castShadow><coneGeometry args={[0.42, 0.6, 6]} /><meshStandardMaterial color="#7a5a3c" flatShading /></mesh>
+        <mesh ref={legL} position={[-0.18, 0.5, 0]} castShadow><boxGeometry args={[0.22, 0.9, 0.22]} /><meshStandardMaterial color="#3e3a36" flatShading /></mesh>
+        <mesh ref={legR} position={[0.18, 0.5, 0]} castShadow><boxGeometry args={[0.22, 0.9, 0.22]} /><meshStandardMaterial color="#3e3a36" flatShading /></mesh>
+        <mesh position={[-0.45, 1.75, 0]} rotation-z={-0.2} castShadow><boxGeometry args={[0.16, 0.7, 0.16]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
+        {/* sword arm pivots at the shoulder; blade sits in the fist */}
+        <group ref={arm} position={[0.48, 2.05, 0]}>
+          <mesh position-y={-0.35} castShadow><boxGeometry args={[0.16, 0.7, 0.16]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
+          <mesh position-y={-0.72} castShadow><icosahedronGeometry args={[0.11, 0]} /><meshStandardMaterial color="#e8c9a8" flatShading /></mesh>
+          <mesh ref={sword} position={[0, -0.72, 0.75]} castShadow><boxGeometry args={[0.06, 0.12, 1.3]} /><meshStandardMaterial color={PALETTE.metal} metalness={0.6} roughness={0.3} /></mesh>
+          <mesh position={[0, -0.72, 0.1]}><boxGeometry args={[0.32, 0.06, 0.06]} /><meshStandardMaterial color={PALETTE.gold} /></mesh>
+        </group>
       </group>
     </>
   );
