@@ -15,7 +15,8 @@ const stripTsdSourceInGame = {
     return {
       code: code
         .replace(/\s*data-tsd-source=("[^"]*"|\{[^}]*\})/g, "")
-        .replace(/,?\s*"data-tsd-source":\s*"[^"]*"/g, ""),
+        .replace(/,?\s*"data-tsd-source":\s*"[^"]*"/g, "")
+        .replace(/\{\s*,/g, "{"),
       map: null,
     };
   },

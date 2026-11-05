@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { Model, PALETTE as P } from './Models';
 import type { Enemy, GameState } from './sim/game';
 
-function Joint({a,b,anchorA,anchorB}:{a:React.RefObject<RapierRigidBody|null>;b:React.RefObject<RapierRigidBody|null>;anchorA:[number,number,number];anchorB:[number,number,number]}){useSphericalJoint(a,b,[anchorA,anchorB]);return null;}
+function Joint({a,b,anchorA,anchorB}:{a:React.RefObject<RapierRigidBody|null>;b:React.RefObject<RapierRigidBody|null>;anchorA:[number,number,number];anchorB:[number,number,number]}){useSphericalJoint(a as React.RefObject<RapierRigidBody>,b as React.RefObject<RapierRigidBody>,[anchorA,anchorB]);return null;}
 function Ragdoll({enemy:e}:{enemy:Enemy}){
  const torso=useRef<RapierRigidBody>(null),head=useRef<RapierRigidBody>(null),la=useRef<RapierRigidBody>(null),ra=useRef<RapierRigidBody>(null),ll=useRef<RapierRigidBody>(null),rl=useRef<RapierRigidBody>(null);
  useEffect(()=>{torso.current?.applyImpulse({x:e.vx*.5,y:3,z:e.vz*.5},true);torso.current?.applyTorqueImpulse({x:1,y:.3,z:.6},true);},[e]);
