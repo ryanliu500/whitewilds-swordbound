@@ -32,8 +32,8 @@ function useBodyMotion(game: GameState) {
 function makeChain(n: number) { return Array.from({ length: n }, () => ({ x: 0, z: 0, y: 0, vx: 0, vz: 0, vy: 0 })); }
 function stepChain(chain: ReturnType<typeof makeChain>, tx: number, ty: number, tz: number, dt: number, stiff: number, damping: number) {
   for (let i = 0; i < chain.length; i++) {
-    const c = chain[i], t = i / Math.max(1, chain.length - 1);
-    const prev = i === 0 ? { x: 0, y: 0, z: 0 } : chain[i - 1];
+    const c = chain[i]!, t = i / Math.max(1, chain.length - 1);
+    const prev = i === 0 ? { x: 0, y: 0, z: 0 } : chain[i - 1]!;
     // target is a blend of the drive force (stronger lower down) and the row above (cloth continuity)
     const gx = prev.x * 0.55 + tx * t, gy = prev.y * 0.55 + ty * t, gz = prev.z * 0.55 + tz * t;
     const k = stiff * (1 - t * 0.55);
@@ -79,16 +79,16 @@ export function Hood({ game }: { game: GameState }) {
     stepChain(chain.current, -m.side * 0.006 - m.turn * 0.03, -m.vy * 0.006, -Math.max(0, m.fwd) * 0.008, dt, 140, 9);
     const attr = geometry.getAttribute('position');
     for (let r = 0; r <= rows; r++) {
-      const t = r / rows, ch = chain.current[r];
+      const t = r / rows, ch = chain.current[r]!;
       const crown = Math.max(0, t - 0.3);
       for (let c = 0; c <= segs; c++) {
         const i = (r * (segs + 1) + c) * 3, u = c / segs;
         const flutter = Math.sin(m.time * 7 + u * 9 + t * 4) * Math.min(0.03, Math.abs(m.fwd) * 0.0018);
         const rim = 1 - Math.abs(u - 0.5) * 2; // 0 at face edges
         attr.setXYZ(i / 3,
-          base[i] + ch.x * crown,
-          base[i + 1] + ch.y * crown + flutter * 0.5,
-          base[i + 2] + ch.z * crown * (0.6 + rim) + flutter * (1 - t));
+          base[i]! + ch.x * crown,
+          base[i + 1]! + ch.y * crown + flutter * 0.5,
+          base[i + 2]! + ch.z * crown * (0.6 + rim) + flutter * (1 - t));
       }
     }
     attr.needsUpdate = true; geometry.computeVertexNormals();
@@ -118,7 +118,7 @@ export function FlowingCloak({ game }: { game: GameState }) {
       dt, 90, 7);
     const attr = geometry.getAttribute('position');
     for (let row = 0; row <= rows; row++) {
-      const t = row / rows, free = t * t, ch = chain.current[row];
+      const t = row / rows, free = t * t, ch = chain.current[row]!;
       for (let col = 0; col <= cols; col++) {
         const u = col / cols * 2 - 1; // -1..1 across, edges wrap around arms
         const edge = Math.abs(u);
