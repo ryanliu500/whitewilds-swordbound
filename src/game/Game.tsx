@@ -1,3 +1,4 @@
+import { SkyAndSun, Meadow } from "./Atmosphere";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, Lightformer } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
@@ -21,7 +22,6 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
   const cam = useRef({ yaw: 0, pitch: 0.35, dist: 12 });
   const hero = useRef<THREE.Group>(null);
   const sword = useRef<THREE.Mesh>(null);
-  const sun = useRef<THREE.DirectionalLight>(null);
   const acc = useRef(0);
   const arm = useRef<THREE.Group>(null);
   const legL = useRef<THREE.Mesh>(null), legR = useRef<THREE.Mesh>(null);
@@ -73,7 +73,7 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     pressed.jump = pressed.attack = pressed.interact = pressed.hop = false;
     step(game, i, d);
     const p = game.player;
-    if (hero.current) { hero.current.position.set(p.x, p.y, p.z); hero.current.rotation.y = p.rot; }
+    if (hero.current) { hero.current.position.set(p.x, p.y + 0.35, p.z); hero.current.rotation.y = p.rot; }
     const isMoving = (i.forward !== 0 || i.strafe !== 0) && !paused;
     if (isMoving) walk.current += Math.min(d, 0.05) * 11;
     const sw = isMoving && p.grounded ? Math.sin(walk.current) * 0.6 : 0;
@@ -91,19 +91,12 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     camera.position.set(t.x + Math.sin(c.yaw) * Math.cos(c.pitch) * c.dist, t.y + Math.sin(c.pitch) * c.dist, t.z + Math.cos(c.yaw) * Math.cos(c.pitch) * c.dist);
     camera.position.y = Math.max(camera.position.y, heightAt(camera.position.x, camera.position.z) + 1);
     camera.lookAt(t);
-    if (sun.current) {
-      sun.current.position.set(p.x + 60, p.y + 120, p.z + 40);
-      sun.current.target.position.set(p.x, p.y, p.z);
-      sun.current.target.updateMatrixWorld();
-    }
     acc.current += d;
     if (acc.current > 1 / 30) { acc.current = 0; onTick(); }
   });
 
   return (
     <>
-      <directionalLight ref={sun} intensity={2.2} castShadow shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-80} shadow-camera-right={80} shadow-camera-top={80} shadow-camera-bottom={-80} shadow-camera-far={400} shadow-bias={-0.0005} />
       <group ref={hero}>
         {/* sleek low-poly hero: cloak, head, hood, legs, sword arm */}
         <mesh position-y={1.6} castShadow><cylinderGeometry args={[0.35, 0.6, 1.3, 6]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
@@ -220,15 +213,15 @@ export default function Game() {
   }, []);
   return (
     <div className="relative h-screen w-screen" data-scene-ready>
-      <Canvas shadows camera={{ fov: 60, near: 0.5, far: 12000 }}>
-        <color attach="background" args={[PALETTE.sky]} />
+      <Canvas shadows="soft" camera={{ fov: 60, near: 0.5, far: 20000 }} gl={{ toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 0.8 }}>
         <fog attach="fog" args={[PALETTE.fog, 250, 3000]} />
-        <hemisphereLight args={["#ffffff", "#c8c2b8", 0.9]} />
+        <SkyAndSun game={game} paused={menu} />
         <Environment>
           <Lightformer intensity={2} position={[0, 5, 0]} scale={[10, 10, 1]} />
           <Lightformer intensity={1} color="#bcd" position={[-5, 1, -1]} rotation-y={Math.PI / 2} scale={[20, 1, 1]} />
         </Environment>
         <WorldScene />
+        <Meadow />
         <Physics paused={menu}>
           <Suspense fallback={null}>
             <Camp game={game} />
