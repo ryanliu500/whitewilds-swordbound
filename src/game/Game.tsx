@@ -9,7 +9,7 @@ import { RULES, createGame, emptyInput, step, type GameState } from "./sim/game"
 import WorldScene from "./WorldScene";
 import Camp from "./Camp";
 import Enemies from "./Enemies";
-import { PALETTE } from "./Models";
+import Hero from "./Hero";
 
 const game: GameState = createGame();
 const keys: Record<string, boolean> = {};
@@ -97,22 +97,7 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
 
   return (
     <>
-      <group ref={hero}>
-        {/* sleek low-poly hero: cloak, head, hood, legs, sword arm */}
-        <mesh position-y={1.6} castShadow><cylinderGeometry args={[0.35, 0.6, 1.3, 6]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
-        <mesh position-y={2.55} castShadow><icosahedronGeometry args={[0.35, 0]} /><meshStandardMaterial color="#e8c9a8" flatShading /></mesh>
-        <mesh position-y={2.75} castShadow><coneGeometry args={[0.42, 0.6, 6]} /><meshStandardMaterial color="#7a5a3c" flatShading /></mesh>
-        <mesh ref={legL} position={[-0.18, 0.5, 0]} castShadow><boxGeometry args={[0.22, 0.9, 0.22]} /><meshStandardMaterial color="#3e3a36" flatShading /></mesh>
-        <mesh ref={legR} position={[0.18, 0.5, 0]} castShadow><boxGeometry args={[0.22, 0.9, 0.22]} /><meshStandardMaterial color="#3e3a36" flatShading /></mesh>
-        <mesh position={[-0.45, 1.75, 0]} rotation-z={-0.2} castShadow><boxGeometry args={[0.16, 0.7, 0.16]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
-        {/* sword arm pivots at the shoulder; blade sits in the fist */}
-        <group ref={arm} position={[0.48, 2.05, 0]}>
-          <mesh position-y={-0.35} castShadow><boxGeometry args={[0.16, 0.7, 0.16]} /><meshStandardMaterial color="#5b7fa3" flatShading /></mesh>
-          <mesh position-y={-0.72} castShadow><icosahedronGeometry args={[0.11, 0]} /><meshStandardMaterial color="#e8c9a8" flatShading /></mesh>
-          <mesh ref={sword} position={[0, -0.72, 0.75]} castShadow><boxGeometry args={[0.06, 0.12, 1.3]} /><meshStandardMaterial color={PALETTE.metal} metalness={0.6} roughness={0.3} /></mesh>
-          <mesh position={[0, -0.72, 0.1]}><boxGeometry args={[0.32, 0.06, 0.06]} /><meshStandardMaterial color={PALETTE.gold} /></mesh>
-        </group>
-      </group>
+      <Hero game={game} />
     </>
   );
 }

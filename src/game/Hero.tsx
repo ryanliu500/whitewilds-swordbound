@@ -30,7 +30,8 @@ const M = {
   eye: new THREE.MeshStandardMaterial({ color: "#1d3b5c", flatShading: true }),
 };
 
-type G = THREE.Group | null;
+type G = THREE.Group | null | undefined;
+type Keys = "root"|"pelvis"|"spine"|"head"|"shL"|"elL"|"shR"|"elR"|"blade"|"flapF"|"flapB"|"flapL"|"flapR"|"cap"|"hipL"|"kneeL"|"ankleL"|"hipR"|"kneeR"|"ankleR";
 const lerp = THREE.MathUtils.lerp;
 const damp = (a: number, b: number, k: number, dt: number) => lerp(a, b, 1 - Math.exp(-k * dt));
 
@@ -44,12 +45,12 @@ function solveLeg(dz: number, dy: number) {
 }
 
 function Box({ s, p = [0, 0, 0], m, r }: { s: [number, number, number]; p?: [number, number, number]; m: THREE.Material; r?: [number, number, number] }) {
-  return <mesh position={p} rotation={r} material={m} castShadow receiveShadow><boxGeometry args={s} /></mesh>;
+  return <mesh position={p} rotation={r ?? [0, 0, 0]} material={m} castShadow receiveShadow><boxGeometry args={s} /></mesh>;
 }
 
 export default function Hero({ game }: { game: GameState }) {
-  const r = useRef<Record<string, G>>({});
-  const set = (k: string) => (o: THREE.Group | null) => { r.current[k] = o; };
+  const r = useRef({} as Record<Keys, THREE.Group>);
+  const set = (k: Keys) => (o: THREE.Group | null) => { if (o) r.current[k] = o; };
   const st = useRef({ phase: 0, prevX: NaN, prevZ: NaN, speed: 0, fwd: 0, wasGrounded: true, land: 0, landK: 0, pelvis: 0, lean: 0, combo: 0, lastAttack: 0, footL: 0, footR: 0, t: 0, airT: 0 });
 
   useFrame((_, delta) => {
