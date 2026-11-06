@@ -274,7 +274,7 @@ export default function Hero({ game }: { game: GameState }) {
           <Box s={[0.08, 0.7, 0.04]} p={[0.1, 0.32, 0.27]} r={[0, 0, 0.6]} m={M.belt} />
           {/* sheath on the back */}
           <Box s={[0.1, 0.9, 0.14]} p={[0.05, 0.35, -0.3]} r={[0, 0, 0.7]} m={M.belt} />
-          <mesh position-y={0.74} material={M.skin} castShadow><cylinderGeometry args={[0.09, 0.11, 0.16, 6]} /></mesh>
+          <mesh position-y={0.74} material={HERO_FABRIC.shadow} castShadow><cylinderGeometry args={[0.09, 0.11, 0.16, 6]} /></mesh>
           {armR}{armL}
           <group ref={set("head")} position-y={0.86}>
             <mesh position-y={0.18} material={M.skin} castShadow><icosahedronGeometry args={[0.27, 1]} /></mesh>

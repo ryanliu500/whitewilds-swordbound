@@ -58,7 +58,7 @@ export function Hood({ game }: { game: GameState }) {
         const open = t < 0.5 ? 0.3 + t * 1.0 : 0.8 - (t - 0.5) * 0.7;
         const a = open + u * (Math.PI * 2 - open * 2);
         // flares wide at the bottom so it melts into the cape mantle, then a rounded slouching crown
-        const radius = t < 0.25 ? 0.6 - t * 0.96 : t < 0.6 ? 0.36 + Math.sin((t - 0.25) / 0.35 * Math.PI * 0.5) * 0.03 : 0.39 * Math.sqrt(Math.max(0.04, 1 - Math.pow((t - 0.6) / 0.42, 2)));
+        const radius = t < 0.25 ? 0.27 + t * 0.36 : t < 0.6 ? 0.36 + Math.sin((t - 0.25) / 0.35 * Math.PI * 0.5) * 0.03 : 0.39 * Math.sqrt(Math.max(0.04, 1 - Math.pow((t - 0.6) / 0.42, 2)));
         const front = Math.pow(Math.abs(u - 0.5) * 2, 3); // 1 at face edges
         const brow = Math.max(0, (t - 0.5) / 0.5);
         const y = -0.36 + t * 0.86 - front * brow * 0.1;
@@ -129,14 +129,15 @@ export function FlowingCloak({ game }: { game: GameState }) {
         const edge = Math.abs(u);
         // wrap: outer columns curve forward over the shoulders/arms, less so further down
         const wrapAng = u * (1.75 - t * 0.6);
-        const radius = 0.52 + t * 0.28;
+        // one garment with the hood: the top gathers at the neck (inside the cowl), then slopes over the shoulders
+        const radius = 0.22 + Math.sin(Math.min(1, t * 5) * Math.PI * 0.5) * 0.32 + t * 0.26;
         const wave = Math.sin(m.time * 5 - t * 7 + u * 3) * (0.02 + speed * 0.004) * free;
         const ripple = Math.sin(m.time * 9 - t * 11 + u * 5) * Math.min(0.05, speed * 0.002) * t;
         // shoulder mantle sits high, arm edges hang shorter than the back
         const len = 1.72 - edge * edge * 0.95;
         attr.setXYZ(row * (cols + 1) + col,
           Math.sin(wrapAng) * radius * 1.15 + ch.x * free + wave,
-          0.7 - t * len + ch.y * free * (1 - edge * 0.5) + Math.cos(u * Math.PI * 6) * 0.015 * t,
+          0.86 - t * (len + 0.16) + ch.y * free * (1 - edge * 0.5) + Math.cos(u * Math.PI * 6) * 0.015 * t,
           -Math.cos(wrapAng) * radius * 0.82 - 0.02 + ch.z * free * (1 - edge * 0.6) + Math.cos(u * Math.PI * 5) * 0.035 * t + ripple);
       }
     }
