@@ -1,11 +1,11 @@
 {
-  "version": 1,
   "asset_id": "7abde73f-b281-481f-8eff-f126597a86c2",
-  "project_id": "80d86c6c-090d-48ea-a727-a9523bb5c927",
-  "url": "/__l5e/assets-v1/7abde73f-b281-481f-8eff-f126597a86c2/fence-fortified.glb",
-  "r2_key": "a/v1/80d86c6c-090d-48ea-a727-a9523bb5c927/7abde73f-b281-481f-8eff-f126597a86c2/fence-fortified.glb",
-  "original_filename": "fence-fortified.glb",
-  "size": 20812,
   "content_type": "model/gltf-binary",
-  "created_at": "2026-11-04T03:47:12Z"
+  "created_at": "2026-11-04T03:47:12Z",
+  "original_filename": "fence-fortified.glb",
+  "project_id": "185eaf16-65ae-4465-bec3-6e0efa07c730",
+  "r2_key": "a/v1/185eaf16-65ae-4465-bec3-6e0efa07c730/7abde73f-b281-481f-8eff-f126597a86c2/fence-fortified.glb",
+  "size": 20812,
+  "url": "/__l5e/assets-v1/7abde73f-b281-481f-8eff-f126597a86c2/fence-fortified.glb",
+  "version": 1
 }
