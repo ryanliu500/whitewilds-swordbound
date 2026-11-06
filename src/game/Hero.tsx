@@ -72,7 +72,7 @@ export default function Hero({ game }: { game: GameState }) {
     shield.scale.setScalar(unfold);
     shield.rotation.y = (1 - unfold) * -1.3;
     shield.position.x = 0.12 - (1 - unfold) * 0.18;
-    root.userData.shieldAmount = spose.amount;
+    root.userData['shieldAmount'] = spose.amount;
 
     // --- velocity from motion ---
     if (Number.isNaN(s.prevX)) { s.prevX = p.x; s.prevZ = p.z; }
