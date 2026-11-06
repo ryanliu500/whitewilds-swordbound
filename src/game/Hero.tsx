@@ -278,7 +278,7 @@ export default function Hero({ game }: { game: GameState }) {
           {armR}{armL}
           <group ref={set("head")} position-y={0.86}>
             <mesh position-y={0.18} material={M.skin} castShadow><icosahedronGeometry args={[0.27, 1]} /></mesh>
-            <Hood />
+            <Hood game={game} />
             <Box s={[0.07, 0.08, 0.02]} p={[0.1, 0.2, 0.25]} m={M.eye} />
             <Box s={[0.07, 0.08, 0.02]} p={[-0.1, 0.2, 0.25]} m={M.eye} />
           </group>
