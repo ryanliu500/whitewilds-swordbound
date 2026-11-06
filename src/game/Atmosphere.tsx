@@ -86,14 +86,15 @@ export function SkyAndSun({ game, paused }: { game: Game; paused: boolean }) {
     const u = skyMat.uniforms as any;
     u.uZenith.value.copy(c.zenith); u.uHorizon.value.copy(c.horizon); u.uSunDir.value.copy(dir); u.uSunColor.value.copy(c.sun); u.uNight.value = night;
     sky.current?.position.copy(camera.position);
+    (scene as unknown as { environmentIntensity: number }).environmentIntensity = 1 - night * 0.9;
     if (scene.fog) (scene.fog as THREE.Fog).color.copy(c.fog);
     if (sun.current) {
       const light = dir.y > -0.05 ? dir : dir.clone().negate(); // moonlight at night
       sun.current.position.set(p.x + light.x * 200, p.y + Math.max(light.y, 0.15) * 200, p.z + light.z * 200);
       sun.current.target.position.set(p.x, p.y, p.z); sun.current.target.updateMatrixWorld();
-      sun.current.color.copy(c.sun); sun.current.intensity = c.sunI;
+      sun.current.color.copy(c.sun); sun.current.intensity = c.sunI * (1 - night * 0.75);
     }
-    if (hemi.current) { hemi.current.intensity = c.amb; hemi.current.color.copy(c.zenith).lerp(new THREE.Color("#ffffff"), 0.55); hemi.current.groundColor.copy(c.fog).multiplyScalar(0.6); }
+    if (hemi.current) { hemi.current.intensity = c.amb * (1 - night * 0.8); hemi.current.color.copy(c.zenith).lerp(new THREE.Color("#ffffff"), 0.55 * (1 - night)); hemi.current.groundColor.copy(c.fog).multiplyScalar(0.6); }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const o = oceanMat.uniforms as any;
     o.uTime.value = state.clock.elapsedTime; o.uSunDir.value.copy(dir); o.uSunColor.value.copy(c.sun); o.uSky.value.copy(c.zenith); o.uHorizon.value.copy(c.horizon); o.uFog.value.copy(c.fog); o.uNight.value = night;
@@ -111,6 +112,15 @@ export function SkyAndSun({ game, paused }: { game: Game; paused: boolean }) {
     </>
   );
 }
+
+const WIND = `#include <begin_vertex>
+        vec4 ip = instanceMatrix * vec4(0.,0.,0.,1.);
+        float hh = position.y * position.y;
+        float gust = sin(uTime*0.9 + ip.x*0.035 + ip.z*0.02)*0.5+0.5;
+        float sway = sin(uTime*1.8 + ip.x*0.12 + ip.z*0.09)*(0.18+gust*0.35) + sin(uTime*5.3 + ip.x*1.7)*0.05;
+        vec3 wdir = (inverse(mat3(instanceMatrix)) * vec3(0.8,0.,0.6));
+        transformed += wdir * sway * hh;
+        transformed.y -= abs(sway) * hh * 0.15;`;
 
 /** TOTK-style meadow: curved two-tone blades in dense clumps with layered wind. */
 export function Meadow() {
@@ -153,22 +163,22 @@ export function Meadow() {
       tints.push(tintA.clone().lerp(tintB, hash(i, 56)));
     }
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 });
+    const uTime = { value: 0 };
+    const wind = (shader: { uniforms: Record<string, unknown>; vertexShader: string }) => {
+      shader.uniforms["uTime"] = uTime;
+      shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader.replace("#include <begin_vertex>", WIND);
+    };
+    const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+    depth.onBeforeCompile = wind;
+    material.userData["shader"] = { uniforms: { uTime } };
     material.onBeforeCompile = (shader) => {
-      shader.uniforms["uTime"] = { value: 0 };
-      material.userData["shader"] = shader;
+      wind(shader);
       shader.fragmentShader = shader.fragmentShader.replace("#include <normal_fragment_begin>", "#include <normal_fragment_begin>\n normal = normalize(vNormal);");
-      shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
-        vec4 ip = instanceMatrix * vec4(0.,0.,0.,1.);
-        float hh = position.y * position.y;
-        float gust = sin(uTime*0.9 + ip.x*0.035 + ip.z*0.02)*0.5+0.5;
-        float sway = sin(uTime*1.8 + ip.x*0.12 + ip.z*0.09)*(0.18+gust*0.35) + sin(uTime*5.3 + ip.x*1.7)*0.05;
-        vec3 wdir = (inverse(mat3(instanceMatrix)) * vec3(0.8,0.,0.6));
-        transformed += wdir * sway * hh;
-        transformed.y -= abs(sway) * hh * 0.15;`);
+
     };
     const im = new THREE.InstancedMesh(geo, material, list.length);
     list.forEach((mm, i) => { im.setMatrixAt(i, mm); im.setColorAt(i, tints[i]!); });
-    im.receiveShadow = true; im.frustumCulled = false;
+    im.receiveShadow = true; im.castShadow = true; im.customDepthMaterial = depth; im.frustumCulled = false;
     (mat as { current: unknown }).current = material;
     return im;
   }, []);

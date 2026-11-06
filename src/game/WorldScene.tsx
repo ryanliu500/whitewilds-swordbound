@@ -3,11 +3,11 @@ import * as THREE from 'three';
 import { CAMP,ISLAND,ISLAND_RADIUS,TOWNS,WORLD_R,hash,heightAt } from './sim/world';
 import { PALETTE as P } from './Models';
 
-export function makeGroundGeometry(size:number,segments:number,cx=0,cz=0){const g=new THREE.PlaneGeometry(size,size,segments,segments);g.rotateX(-Math.PI/2);const p=g.getAttribute('position');const colors=[];
- for(let i=0;i<p.count;i++){const x=p.getX(i)+cx,z=p.getZ(i)+cz,h=heightAt(x,z);p.setXYZ(i,x,h,z);const d=Math.hypot(x-ISLAND[0],z-ISLAND[1]),trail=Math.abs(x-ISLAND[0]-Math.sin((z-ISLAND[1])/70)*8)<5;const color=new THREE.Color(d<ISLAND_RADIUS&&trail?P.trail:P.ground);if(d<ISLAND_RADIUS&&!trail){const f=hash(Math.floor(x/12),Math.floor(z/12));color.lerp(new THREE.Color(P.grass),f>.6?.28:.06);}if(h>150)color.lerp(new THREE.Color(P.stone),.35);colors.push(color.r,color.g,color.b);}
+export function makeGroundGeometry(size:number,segments:number,cx=0,cz=0,mask=false){const g=new THREE.PlaneGeometry(size,size,segments,segments);g.rotateX(-Math.PI/2);const p=g.getAttribute('position');const colors=[];
+ for(let i=0;i<p.count;i++){const x=p.getX(i)+cx,z=p.getZ(i)+cz,h=mask&&Math.abs(x-ISLAND[0])<520&&Math.abs(z-ISLAND[1])<520?-80:heightAt(x,z);p.setXYZ(i,x,h,z);const d=Math.hypot(x-ISLAND[0],z-ISLAND[1]),trail=Math.abs(x-ISLAND[0]-Math.sin((z-ISLAND[1])/70)*8)<5;const color=new THREE.Color(d<ISLAND_RADIUS&&trail?P.trail:P.ground);if(d<ISLAND_RADIUS&&!trail){const f=hash(Math.floor(x/12),Math.floor(z/12));color.lerp(new THREE.Color(P.grass),f>.6?.28:.06);}if(h>150)color.lerp(new THREE.Color(P.stone),.35);colors.push(color.r,color.g,color.b);}
  g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));g.computeVertexNormals();return g;
 }
-function Ground(){const main=useMemo(()=>makeGroundGeometry(WORLD_R*2.4,180),[]);const island=useMemo(()=>makeGroundGeometry(1060,220,ISLAND[0],ISLAND[1]),[]);
+function Ground(){const main=useMemo(()=>makeGroundGeometry(WORLD_R*2.4,180,0,0,true),[]);const island=useMemo(()=>makeGroundGeometry(1060,220,ISLAND[0],ISLAND[1]),[]);
  const texture=useMemo(()=>{const c=document.createElement('canvas');c.width=c.height=128;const ctx=c.getContext('2d');if(ctx){ctx.fillStyle=P.white;ctx.fillRect(0,0,128,128);for(let i=0;i<1500;i++){ctx.fillStyle=i%2?P.stone:P.ground;ctx.globalAlpha=.16;ctx.fillRect(hash(i,1)*128,hash(i,2)*128,1+hash(i,3)*3,1);}}const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(100,100);t.colorSpace=THREE.SRGBColorSpace;return t;},[]);
  return <><mesh geometry={main} receiveShadow><meshStandardMaterial color={P.ground} flatShading roughness={1}/></mesh><mesh geometry={island} receiveShadow><meshStandardMaterial vertexColors map={texture} flatShading roughness={1} polygonOffset polygonOffsetFactor={-2}/></mesh></>;
 }
