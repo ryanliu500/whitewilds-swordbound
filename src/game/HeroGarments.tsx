@@ -59,7 +59,7 @@ export function Hood({ game }: { game: GameState }) {
         const a = open + u * (Math.PI * 2 - open * 2);
         // flares wide at the bottom so it melts into the cape mantle, then a rounded slouching crown
         const radius = t < 0.25 ? 0.6 - t * 0.96 : t < 0.6 ? 0.36 + Math.sin((t - 0.25) / 0.35 * Math.PI * 0.5) * 0.03 : 0.39 * Math.sqrt(Math.max(0.04, 1 - Math.pow((t - 0.6) / 0.42, 2)));
-        const front = Math.pow(1 - Math.abs(u - 0.5) * 2, 0) * Math.pow(Math.abs(u - 0.5) * 2, 3); // 1 at face edges
+        const front = Math.pow(Math.abs(u - 0.5) * 2, 3); // 1 at face edges
         const brow = Math.max(0, (t - 0.5) / 0.5);
         const y = -0.36 + t * 0.86 - front * brow * 0.1;
         const fold = Math.sin(u * Math.PI * 7) * 0.02 * (1 - t);
