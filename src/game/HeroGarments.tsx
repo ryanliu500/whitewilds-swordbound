@@ -55,13 +55,13 @@ export function Hood({ game }: { game: GameState }) {
         const u = c / segs;
         // open front face: angle spans around the back, opening wider at bottom
         // face opening half-angle: closed under the chin, widest at the eyes, pulled in at the brow
-        const open = t < 0.5 ? 0.3 + t * 1.0 : 0.8 - (t - 0.5) * 0.7;
+        const open = t < 0.5 ? 0.3 + t * 1.0 : Math.max(0, 0.8 - (t - 0.5) * 2.2); // crown fully closed, brow edge lands at eye level
         const a = open + u * (Math.PI * 2 - open * 2);
         // flares wide at the bottom so it melts into the cape mantle, then a rounded slouching crown
         const radius = t < 0.25 ? 0.27 + t * 0.36 : t < 0.6 ? 0.36 + Math.sin((t - 0.25) / 0.35 * Math.PI * 0.5) * 0.03 : 0.39 * Math.sqrt(Math.max(0.04, 1 - Math.pow((t - 0.6) / 0.42, 2)));
         const front = Math.pow(Math.abs(u - 0.5) * 2, 3); // 1 at face edges
         const brow = Math.max(0, (t - 0.5) / 0.5);
-        const y = -0.36 + t * 0.86 - front * brow * 0.1;
+        const y = -0.36 + t * 0.86 - front * brow * 0.16;
         const fold = Math.sin(u * Math.PI * 7) * 0.02 * (1 - t);
         const back = Math.pow(t, 2.4) * -0.14;
         // brow hangs forward over the eyes
