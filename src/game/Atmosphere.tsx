@@ -86,15 +86,15 @@ export function SkyAndSun({ game, paused }: { game: Game; paused: boolean }) {
     const u = skyMat.uniforms as any;
     u.uZenith.value.copy(c.zenith); u.uHorizon.value.copy(c.horizon); u.uSunDir.value.copy(dir); u.uSunColor.value.copy(c.sun); u.uNight.value = night;
     sky.current?.position.copy(camera.position);
-    (scene as unknown as { environmentIntensity: number }).environmentIntensity = 1 - night * 0.9;
+    (scene as unknown as { environmentIntensity: number }).environmentIntensity = Math.max(0, 0.55 - night * 0.5);
     if (scene.fog) (scene.fog as THREE.Fog).color.copy(c.fog);
     if (sun.current) {
       const light = dir.y > -0.05 ? dir : dir.clone().negate(); // moonlight at night
       sun.current.position.set(p.x + light.x * 200, p.y + Math.max(light.y, 0.15) * 200, p.z + light.z * 200);
       sun.current.target.position.set(p.x, p.y, p.z); sun.current.target.updateMatrixWorld();
-      sun.current.color.copy(c.sun); sun.current.intensity = c.sunI * (1 - night * 0.75);
+      sun.current.color.copy(c.sun); sun.current.intensity = c.sunI * 1.18 * (1 - night * 0.75);
     }
-    if (hemi.current) { hemi.current.intensity = c.amb * (1 - night * 0.8); hemi.current.color.copy(c.zenith).lerp(new THREE.Color("#ffffff"), 0.55 * (1 - night)); hemi.current.groundColor.copy(c.fog).multiplyScalar(0.6); }
+    if (hemi.current) { hemi.current.intensity = c.amb * 0.58 * (1 - night * 0.8); hemi.current.color.copy(c.zenith).lerp(new THREE.Color("#ffffff"), 0.55 * (1 - night)); hemi.current.groundColor.copy(c.fog).multiplyScalar(0.6); }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const o = oceanMat.uniforms as any;
     o.uTime.value = state.clock.elapsedTime; o.uSunDir.value.copy(dir); o.uSunColor.value.copy(c.sun); o.uSky.value.copy(c.zenith); o.uHorizon.value.copy(c.horizon); o.uFog.value.copy(c.fog); o.uNight.value = night;
@@ -126,12 +126,12 @@ const WIND = `#include <begin_vertex>
 export function Meadow() {
   const mat = useRef<THREE.Material & { userData: { shader?: { uniforms: Record<string, { value: number }> } } }>(null);
   const mesh = useMemo(() => {
-    const SEG = 4, W = 0.16, BLADES = 7;
+    const SEG = 4, W = 0.19, BLADES = 7;
     const pos: number[] = [], col: number[] = [], idx: number[] = [];
     const root = new THREE.Color("#79a552"), tip = new THREE.Color("#f2f0b0");
     for (let k = 0; k < BLADES; k++) {
       const ang = (k / BLADES) * 6.28 + hash(k, 3), r = 0.12 + hash(k, 4) * 0.35, ox = Math.cos(ang) * r, oz = Math.sin(ang) * r;
-      const yaw = hash(k, 5) * 6.28, cy = Math.cos(yaw), sy = Math.sin(yaw), tall = 0.7 + hash(k, 6) * 0.5, base = pos.length / 3;
+      const yaw = hash(k, 5) * 6.28, cy = Math.cos(yaw), sy = Math.sin(yaw), tall = 0.88 + hash(k, 6) * 0.55, base = pos.length / 3;
       for (let s = 0; s <= SEG; s++) {
         const h = s / SEG, w = W * (1 - h * 0.9), bend = h * h * 0.4 * tall;
         for (const sx of [-w, w]) { pos.push(ox + sx * cy + bend * sy, h * tall, oz - sx * sy + bend * cy); }
@@ -159,7 +159,7 @@ export function Meadow() {
       const y = heightAt(x, z); if (y < -22) continue;
       const hgt = 0.55 + (patch - 0.48) * 2.2 + hash(i, 53) * 0.5;
       q.setFromAxisAngle(up, hash(i, 54) * 6.28);
-      list.push(m.compose(v.set(x, y - 0.05, z), q, sc.set(1.4 + hash(i, 55) * 0.8, hgt * 1.3, 1.4 + hash(i, 55) * 0.8)).clone());
+      list.push(m.compose(v.set(x, y - 0.05, z), q, sc.set(1.7 + hash(i, 55) * 0.85, hgt * 1.62, 1.7 + hash(i, 55) * 0.85)).clone());
       tints.push(tintA.clone().lerp(tintB, hash(i, 56)));
     }
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 });
