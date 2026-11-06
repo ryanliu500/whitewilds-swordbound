@@ -10,11 +10,12 @@ import WorldScene from "./WorldScene";
 import Camp from "./Camp";
 import Enemies from "./Enemies";
 import Hero from "./Hero";
+import { isDoubleClick } from "./sim/shield";
 import { PALETTE } from "./Models";
 
 const game: GameState = createGame();
 const keys: Record<string, boolean> = {};
-const pressed = { jump: false, attack: false, interact: false, hop: false };
+const pressed = { jump: false, attack: false, interact: false, hop: false, shield: false };
 let blockHeld = false;
 if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __game: GameState }).__game = game;
 
@@ -30,6 +31,8 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
 
   useEffect(() => {
     const el = gl.domElement;
+    let lastLeft: number | null = null;
+    let lastRight: number | null = null;
     const kd = (e: KeyboardEvent) => {
       if (!keys[e.code]) {
         if (e.code === "Space") pressed.jump = true;
@@ -41,11 +44,17 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     const ku = (e: KeyboardEvent) => (keys[e.code] = false);
     const down = (e: MouseEvent) => {
       if (document.pointerLockElement !== el) { el.requestPointerLock?.(); return; }
-      if (e.button === 0 && !e.ctrlKey) pressed.attack = true;
-      else blockHeld = true;
+      if (e.button === 0 && !e.ctrlKey) {
+        if (e.detail >= 2 || isDoubleClick(lastLeft, e.timeStamp)) { pressed.shield = true; lastLeft = null; }
+        else { pressed.attack = true; lastLeft = e.timeStamp; }
+      } else {
+        if (e.detail >= 2 || isDoubleClick(lastRight, e.timeStamp)) { pressed.shield = true; lastRight = null; }
+        else lastRight = e.timeStamp;
+        blockHeld = true;
+      }
     };
     const up = () => (blockHeld = false);
-    const ctx = (e: Event) => { e.preventDefault(); blockHeld = true; };
+    const ctx = (e: Event) => { e.preventDefault(); };
     const move = (e: PointerEvent) => {
       if (document.pointerLockElement !== el) return;
       cam.current.yaw -= e.movementX * 0.004;
@@ -69,9 +78,10 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     i.forward = (keys["KeyW"] ? 1 : 0) - (keys["KeyS"] ? 1 : 0);
     i.strafe = (keys["KeyD"] ? 1 : 0) - (keys["KeyA"] ? 1 : 0);
     i.yaw = c.yaw; i.sprint = !!keys["ShiftLeft"]; i.block = blockHeld;
+    i.shield = pressed.shield;
     i.jump = pressed.jump; i.attack = pressed.attack; i.interact = pressed.interact;
     i.hop = pressed.hop || (pressed.jump && !game.player.grounded);
-    pressed.jump = pressed.attack = pressed.interact = pressed.hop = false;
+    pressed.jump = pressed.attack = pressed.interact = pressed.hop = pressed.shield = false;
     step(game, i, d);
     const p = game.player;
     if (hero.current) { hero.current.position.set(p.x, p.y + 0.35, p.z); hero.current.rotation.y = p.rot; }

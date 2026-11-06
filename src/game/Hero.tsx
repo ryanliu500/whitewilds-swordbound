@@ -3,6 +3,7 @@ import { useRef } from "react";
 import * as THREE from "three";
 import { heightAt } from "./sim/world";
 import type { GameState } from "./sim/game";
+import { FlowingCloak, Hood, HERO_FABRIC } from './HeroGarments';
 
 /**
  * Articulated low-poly hero (~3.0m tall, same as the old block hero).
@@ -16,8 +17,8 @@ const THIGH = 0.66, SHIN = 0.64, FOOT_H = 0.1, HIP_Y = THIGH + SHIN + FOOT_H - 0
 const UPPER_ARM = 0.5, FOREARM = 0.46;
 
 const M = {
-  tunic: new THREE.MeshStandardMaterial({ color: "#3f7a4a", flatShading: true }),
-  tunicDark: new THREE.MeshStandardMaterial({ color: "#2f5e39", flatShading: true }),
+  tunic: HERO_FABRIC.outer,
+  tunicDark: HERO_FABRIC.lining,
   shirt: new THREE.MeshStandardMaterial({ color: "#d8cfb8", flatShading: true }),
   skin: new THREE.MeshStandardMaterial({ color: "#e8c9a8", flatShading: true }),
   hair: new THREE.MeshStandardMaterial({ color: "#d9b25a", flatShading: true }),
@@ -31,7 +32,7 @@ const M = {
 };
 
 type G = THREE.Group | null | undefined;
-type Keys = "root"|"pelvis"|"spine"|"head"|"shL"|"elL"|"shR"|"elR"|"blade"|"flapF"|"flapB"|"flapL"|"flapR"|"cap"|"hipL"|"kneeL"|"ankleL"|"hipR"|"kneeR"|"ankleR";
+type Keys = "root"|"pelvis"|"spine"|"head"|"shL"|"elL"|"shR"|"elR"|"blade"|"flapF"|"flapB"|"flapL"|"flapR"|"shield"|"hipL"|"kneeL"|"ankleL"|"hipR"|"kneeR"|"ankleR";
 const lerp = THREE.MathUtils.lerp;
 const damp = (a: number, b: number, k: number, dt: number) => lerp(a, b, 1 - Math.exp(-k * dt));
 
@@ -52,12 +53,26 @@ export default function Hero({ game }: { game: GameState }) {
   const r = useRef({} as Record<Keys, THREE.Group>);
   const set = (k: Keys) => (o: THREE.Group | null) => { if (o) r.current[k] = o; };
   const st = useRef({ phase: 0, prevX: NaN, prevZ: NaN, speed: 0, fwd: 0, wasGrounded: true, land: 0, landK: 0, pelvis: 0, lean: 0, combo: 0, lastAttack: 0, footL: 0, footR: 0, t: 0, airT: 0 });
+  const shieldPose = useRef({ amount: 0, hiding: false });
 
   useFrame((_, delta) => {
     const g = r.current, s = st.current, p = game.player;
     const dt = Math.min(delta, 0.05);
     s.t += dt;
     const root = g.root; if (!root) return;
+    if (game.paused) return;
+    const { pelvis, spine, head, shL, elL, shR, elR, blade, flapF, flapB, flapL, flapR, hipL, hipR, shield } = g;
+    if (!pelvis || !spine || !head || !shL || !elL || !shR || !elR || !blade || !flapF || !flapB || !flapL || !flapR || !hipL || !hipR || !shield) return;
+    const reveal = p.shieldTime > 0;
+    const spose = shieldPose.current;
+    spose.hiding = !reveal && spose.amount > 0.005;
+    spose.amount = THREE.MathUtils.clamp(spose.amount + (reveal ? 1 : -1) * dt / 0.6, 0, 1);
+    shield.visible = spose.amount > 0;
+    const unfold = easeOut(spose.amount);
+    shield.scale.setScalar(unfold);
+    shield.rotation.y = (1 - unfold) * -1.3;
+    shield.position.x = 0.12 - (1 - unfold) * 0.18;
+    root.userData['shieldAmount'] = spose.amount;
 
     // --- velocity from motion ---
     if (Number.isNaN(s.prevX)) { s.prevX = p.x; s.prevZ = p.z; }
@@ -125,7 +140,7 @@ export default function Hero({ game }: { game: GameState }) {
     const guardCrouch = p.blocking ? 0.16 : 0;
     const targetPelvis = Math.min(0, lowest) - landDip - guardCrouch - bob + breathe - (moving ? 0.05 * run : 0.03);
     s.pelvis = damp(s.pelvis, targetPelvis, 16, dt);
-    g.pelvis!.position.y = HIP_Y + s.pelvis;
+    pelvis.position.y = HIP_Y + s.pelvis;
 
     const applyLeg = (hip: G, knee: G, ankle: G, t: { fz: number; up: number }, foot: number, side: 1 | -1) => {
       if (!hip || !knee || !ankle) return;
@@ -145,13 +160,12 @@ export default function Hero({ game }: { game: GameState }) {
     const twist = moving && p.grounded ? -Math.sin(s.phase) * 0.12 * (0.5 + run) : 0;
     let atkTwist = 0;
     if (atk >= 0 && s.combo < 2) { const dir = s.combo === 0 ? 1 : -1; atkTwist = dir * lerp(0.9, -1.0, easeOut(atk)); }
-    g.pelvis!.rotation.y = -twist * 0.5;
-    g.spine!.rotation.set(s.lean + (atk >= 0 && s.combo === 2 ? lerp(-0.25, 0.4, easeOut(atk)) : 0), twist + atkTwist, 0);
-    g.head!.rotation.set(-s.lean * 0.6 + (p.swimming ? -0.7 : 0), -(twist + atkTwist) * 0.6, 0);
+    pelvis.rotation.y = -twist * 0.5;
+    spine.rotation.set(s.lean + (atk >= 0 && s.combo === 2 ? lerp(-0.25, 0.4, easeOut(atk)) : 0), twist + atkTwist, 0);
+    head.rotation.set(-s.lean * 0.6 + (p.swimming ? -0.7 : 0), -(twist + atkTwist) * 0.6, 0);
 
     // --- arms ---
     const armSwing = moving && p.grounded ? Math.sin(s.phase) * lerp(0.35, 0.9, run) : 0;
-    const shL = g.shL!, elL = g.elL!, shR = g.shR!, elR = g.elR!;
     // left arm (shield)
     let lx = -armSwing, lz = 0.18, le = -0.35 - run * 0.6, ly = 0;
     if (p.blocking) { lx = -1.35; ly = 0.6; lz = 0.25; le = -1.3; }
@@ -159,6 +173,8 @@ export default function Hero({ game }: { game: GameState }) {
     else if (p.swimming) { lx = -1.2 + Math.sin(s.t * 6) * 0.9; lz = 0.6; le = -0.4; }
     else if (p.climbing) { lx = -2.6 + Math.sin(s.t * 6) * 0.4; lz = 0.1; le = -0.6; }
     else if (!moving) { lx = 0.05 + breathe * 3; lz = 0.12; le = -0.25; }
+    if (spose.hiding) { lx = -0.85; ly = -0.65; lz = 0.25; le = -1.65; }
+    else if (reveal && spose.amount < 1) { lx = -1; ly = 0.3; le = -1.2; }
     shL.rotation.set(damp(shL.rotation.x, lx, 14, dt), damp(shL.rotation.y, ly, 14, dt), damp(shL.rotation.z, lz, 14, dt));
     elL.rotation.x = damp(elL.rotation.x, le, 14, dt);
     // right arm (sword)
@@ -178,16 +194,14 @@ export default function Hero({ game }: { game: GameState }) {
       elR.rotation.x = damp(elR.rotation.x, re, 14, dt);
     }
     // blade points forward during swing, rests angled down/back otherwise
-    g.blade!.rotation.x = atk >= 0 ? 0 : damp(g.blade!.rotation.x, p.blocking ? 0.2 : 0.9, 10, dt);
+    blade.rotation.x = atk >= 0 ? 0 : damp(blade.rotation.x, p.blocking ? 0.2 : 0.9, 10, dt);
 
     // --- tunic flaps follow thighs and velocity ---
-    const fl = g.flapF!, bl = g.flapB!, lfl = g.flapL!, rfl = g.flapR!;
-    const hipAvg = ((g.hipL!.rotation.x) + (g.hipR!.rotation.x)) / 2;
-    fl.rotation.x = Math.min(0, Math.min(g.hipL!.rotation.x, g.hipR!.rotation.x)) * 0.7 - 0.05;
-    bl.rotation.x = Math.max(0.05, s.speed * 0.02 + (!p.grounded ? 0.5 : 0) + hipAvg * -0.2);
-    lfl.rotation.z = -0.08 - (!p.grounded ? 0.3 : 0) - s.speed * 0.004;
-    rfl.rotation.z = 0.08 + (!p.grounded ? 0.3 : 0) + s.speed * 0.004;
-    g.cap!.rotation.x = damp(g.cap!.rotation.x, 0.3 + s.speed * 0.025 + (!p.grounded ? Math.max(0, -p.vy) * 0.02 : 0), 6, dt);
+    const hipAvg = (hipL.rotation.x + hipR.rotation.x) / 2;
+    flapF.rotation.x = Math.min(0, Math.min(hipL.rotation.x, hipR.rotation.x)) * 0.7 - 0.05;
+    flapB.rotation.x = Math.max(0.05, s.speed * 0.02 + (!p.grounded ? 0.5 : 0) + hipAvg * -0.2);
+    flapL.rotation.z = -0.08 - (!p.grounded ? 0.3 : 0) - s.speed * 0.004;
+    flapR.rotation.z = 0.08 + (!p.grounded ? 0.3 : 0) + s.speed * 0.004;
   });
 
   const leg = (side: 1 | -1) => (
@@ -233,7 +247,7 @@ export default function Hero({ game }: { game: GameState }) {
         <Box s={[0.15, FOREARM, 0.15]} p={[0, -FOREARM / 2, 0]} m={M.shirt} />
         <mesh position={[0, -FOREARM - 0.05, 0]} material={M.skin} castShadow><icosahedronGeometry args={[0.09, 0]} /></mesh>
         {/* shield strapped to the forearm */}
-        <group position={[0.12, -FOREARM * 0.55, 0.05]} rotation-z={Math.PI / 2}>
+        <group ref={set('shield')} name="hero-shield" visible={false} scale={0} position={[0.12, -FOREARM * 0.55, 0.05]} rotation-z={Math.PI / 2}>
           <mesh rotation-x={Math.PI / 2} material={M.shield} castShadow><cylinderGeometry args={[0.38, 0.38, 0.06, 7]} /></mesh>
           <mesh position-y={0.04} rotation-x={Math.PI / 2} material={M.metal} castShadow><cylinderGeometry args={[0.1, 0.1, 0.05, 6]} /></mesh>
         </group>
@@ -254,6 +268,7 @@ export default function Hero({ game }: { game: GameState }) {
         <group ref={set("flapR")} position={[-0.29, 0.08, 0]}><Box s={[0.05, 0.4, 0.34]} p={[0, -0.2, 0]} m={M.tunic} /></group>
         {leg(1)}{leg(-1)}
         <group ref={set("spine")} position-y={0.16}>
+          <FlowingCloak game={game} />
           <mesh position-y={0.3} material={M.tunic} castShadow><cylinderGeometry args={[0.36, 0.28, 0.62, 6]} /></mesh>
           <Box s={[0.66, 0.16, 0.36]} p={[0, 0.6, 0]} m={M.tunic} />
           <Box s={[0.08, 0.7, 0.04]} p={[0.1, 0.32, 0.27]} r={[0, 0, 0.6]} m={M.belt} />
@@ -263,16 +278,9 @@ export default function Hero({ game }: { game: GameState }) {
           {armR}{armL}
           <group ref={set("head")} position-y={0.86}>
             <mesh position-y={0.18} material={M.skin} castShadow><icosahedronGeometry args={[0.27, 1]} /></mesh>
-            <mesh position={[0, 0.3, -0.04]} scale={[1.05, 0.75, 1.05]} material={M.hair} castShadow><icosahedronGeometry args={[0.28, 0]} /></mesh>
+            <Hood />
             <Box s={[0.07, 0.08, 0.02]} p={[0.1, 0.2, 0.25]} m={M.eye} />
             <Box s={[0.07, 0.08, 0.02]} p={[-0.1, 0.2, 0.25]} m={M.eye} />
-            {/* pointed ears */}
-            <mesh position={[0.28, 0.2, -0.02]} rotation={[0, 0, -1.2]} material={M.skin} castShadow><coneGeometry args={[0.05, 0.22, 4]} /></mesh>
-            <mesh position={[-0.28, 0.2, -0.02]} rotation={[0, 0, 1.2]} material={M.skin} castShadow><coneGeometry args={[0.05, 0.22, 4]} /></mesh>
-            {/* trailing cap */}
-            <group ref={set("cap")} position={[0, 0.42, -0.08]}>
-              <mesh position={[0, -0.05, -0.32]} rotation-x={-Math.PI / 2 + 0.2} material={M.tunic} castShadow><coneGeometry args={[0.24, 0.7, 5]} /></mesh>
-            </group>
           </group>
         </group>
       </group>
