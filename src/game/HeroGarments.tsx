@@ -54,14 +54,19 @@ export function Hood({ game }: { game: GameState }) {
       for (let c = 0; c <= segs; c++) {
         const u = c / segs;
         // open front face: angle spans around the back, opening wider at bottom
-        const open = 1.15 - t * 0.35;
+        // face opening half-angle: closed under the chin, widest at the eyes, pulled in at the brow
+        const open = t < 0.5 ? 0.3 + t * 1.0 : 0.8 - (t - 0.5) * 0.7;
         const a = open + u * (Math.PI * 2 - open * 2);
-        const radius = t < 0.25 ? 0.5 - t * 0.6 : 0.36 + Math.sin((t - 0.25) / 0.75 * Math.PI) * 0.05 - Math.pow(Math.max(0, t - 0.7) / 0.3, 1.6) * 0.33;
-        const y = -0.2 + t * 0.78;
-        // folds around the rim and a peak that falls back
-        const fold = Math.sin(u * Math.PI * 7) * 0.018 * (1 - t);
-        const back = Math.pow(t, 2.2) * -0.16;
-        pos.push(Math.sin(a) * (radius + fold), y, Math.cos(a) * (radius + fold) * 1.08 + back + 0.02);
+        // flares wide at the bottom so it melts into the cape mantle, then a rounded slouching crown
+        const radius = t < 0.25 ? 0.6 - t * 0.96 : t < 0.6 ? 0.36 + Math.sin((t - 0.25) / 0.35 * Math.PI * 0.5) * 0.03 : 0.39 * Math.sqrt(Math.max(0.04, 1 - Math.pow((t - 0.6) / 0.42, 2)));
+        const front = Math.pow(Math.abs(u - 0.5) * 2, 3); // 1 at face edges
+        const brow = Math.max(0, (t - 0.5) / 0.5);
+        const y = -0.36 + t * 0.86 - front * brow * 0.1;
+        const fold = Math.sin(u * Math.PI * 7) * 0.02 * (1 - t);
+        const back = Math.pow(t, 2.4) * -0.14;
+        // brow hangs forward over the eyes
+        const overhang = front * Math.sin(brow * Math.PI) * 0.1;
+        pos.push(Math.sin(a) * (radius + fold), y, Math.cos(a) * (radius + fold) * 1.08 + back + overhang + 0.02);
         if (r < rows && c < segs) { const i = r * (segs + 1) + c, j = i + segs + 1; idx.push(i, j, i + 1, i + 1, j, j + 1); }
       }
     }
@@ -124,7 +129,7 @@ export function FlowingCloak({ game }: { game: GameState }) {
         const edge = Math.abs(u);
         // wrap: outer columns curve forward over the shoulders/arms, less so further down
         const wrapAng = u * (1.75 - t * 0.6);
-        const radius = 0.4 + t * 0.32;
+        const radius = 0.52 + t * 0.28;
         const wave = Math.sin(m.time * 5 - t * 7 + u * 3) * (0.02 + speed * 0.004) * free;
         const ripple = Math.sin(m.time * 9 - t * 11 + u * 5) * Math.min(0.05, speed * 0.002) * t;
         // shoulder mantle sits high, arm edges hang shorter than the back
@@ -132,13 +137,12 @@ export function FlowingCloak({ game }: { game: GameState }) {
         attr.setXYZ(row * (cols + 1) + col,
           Math.sin(wrapAng) * radius * 1.15 + ch.x * free + wave,
           0.7 - t * len + ch.y * free * (1 - edge * 0.5) + Math.cos(u * Math.PI * 6) * 0.015 * t,
-          -Math.cos(wrapAng) * radius * 0.75 + 0.06 + ch.z * free * (1 - edge * 0.6) + Math.cos(u * Math.PI * 5) * 0.035 * t + ripple);
+          -Math.cos(wrapAng) * radius * 0.82 - 0.02 + ch.z * free * (1 - edge * 0.6) + Math.cos(u * Math.PI * 5) * 0.035 * t + ripple);
       }
     }
     attr.needsUpdate = true; geometry.computeVertexNormals();
   });
   return <group>
     <mesh name="hero-flowing-cloak" geometry={geometry} material={HERO_FABRIC.outer} castShadow receiveShadow frustumCulled={false} />
-    <mesh position={[0, 0.68, 0]} material={HERO_FABRIC.lining} castShadow><cylinderGeometry args={[0.26, 0.5, 0.18, 12, 1, true]} /></mesh>
   </group>;
 }
