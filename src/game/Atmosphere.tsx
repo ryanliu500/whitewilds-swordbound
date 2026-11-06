@@ -139,7 +139,7 @@ export function Meadow() {
     const root = new THREE.Color("#79a552"), tip = new THREE.Color("#f2f0b0");
     for (let k = 0; k < BLADES; k++) {
       const ang = (k / BLADES) * 6.28 + hash(k, 3), r = 0.12 + hash(k, 4) * 0.35, ox = Math.cos(ang) * r, oz = Math.sin(ang) * r;
-      const yaw = hash(k, 5) * 6.28, cy = Math.cos(yaw), sy = Math.sin(yaw), tall = 0.88 + hash(k, 6) * 0.55, base = pos.length / 3;
+      const yaw = hash(k, 5) * 6.28, cy = Math.cos(yaw), sy = Math.sin(yaw), tall = 0.8 + hash(k, 6) * 0.52, base = pos.length / 3;
       for (let s = 0; s <= SEG; s++) {
         const h = s / SEG, w = W * (1 - h * 0.9), bend = h * h * 0.4 * tall;
         for (const sx of [-w, w]) { pos.push(ox + sx * cy + bend * sy, h * tall, oz - sx * sy + bend * cy); }
@@ -167,7 +167,7 @@ export function Meadow() {
       const y = heightAt(x, z); if (y < -22) continue;
       const hgt = 0.55 + (patch - 0.48) * 2.2 + hash(i, 53) * 0.5;
       q.setFromAxisAngle(up, hash(i, 54) * 6.28);
-      list.push(m.compose(v.set(x, y - 0.05, z), q, sc.set(1.7 + hash(i, 55) * 0.85, hgt * 1.62, 1.7 + hash(i, 55) * 0.85)).clone());
+      list.push(m.compose(v.set(x, y - 0.05, z), q, sc.set(1.6 + hash(i, 55) * 0.8, hgt * 1.48, 1.6 + hash(i, 55) * 0.8)).clone());
       tints.push(tintA.clone().lerp(tintB, hash(i, 56)));
     }
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.85 });
