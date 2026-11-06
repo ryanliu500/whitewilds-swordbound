@@ -99,6 +99,14 @@ export function SkyAndSun({ game, paused }: { game: Game; paused: boolean }) {
     const o = oceanMat.uniforms as any;
     o.uTime.value = state.clock.elapsedTime; o.uSunDir.value.copy(dir); o.uSunColor.value.copy(c.sun); o.uSky.value.copy(c.zenith); o.uHorizon.value.copy(c.horizon); o.uFog.value.copy(c.fog); o.uNight.value = night;
     if (ocean.current) ocean.current.position.set(Math.round(camera.position.x / 12) * 12, WATER_Y, Math.round(camera.position.z / 12) * 12);
+    if (import.meta.env.DEV && typeof window !== "undefined") {
+      (window as unknown as { __lights: Record<string, number> }).__lights = {
+        sun: sun.current?.intensity ?? 0,
+        hemi: hemi.current?.intensity ?? 0,
+        env: (scene as unknown as { environmentIntensity: number }).environmentIntensity ?? 0,
+        night, clock: clock.t,
+      };
+    }
   });
 
   return (
@@ -180,6 +188,7 @@ export function Meadow() {
     list.forEach((mm, i) => { im.setMatrixAt(i, mm); im.setColorAt(i, tints[i]!); });
     im.receiveShadow = true; im.castShadow = true; im.customDepthMaterial = depth; im.frustumCulled = false;
     (mat as { current: unknown }).current = material;
+    if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __grass: THREE.InstancedMesh }).__grass = im;
     return im;
   }, []);
   useFrame((s) => { const sh = mat.current?.userData.shader; if (sh?.uniforms["uTime"]) sh.uniforms["uTime"].value = s.clock.elapsedTime; });
