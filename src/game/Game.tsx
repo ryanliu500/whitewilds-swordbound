@@ -45,10 +45,10 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     const down = (e: MouseEvent) => {
       if (document.pointerLockElement !== el) { el.requestPointerLock?.(); return; }
       if (e.button === 0 && !e.ctrlKey) {
-        if (isDoubleClick(lastLeft, e.timeStamp)) { pressed.shield = true; lastLeft = null; }
+        if (e.detail >= 2 || isDoubleClick(lastLeft, e.timeStamp)) { pressed.shield = true; lastLeft = null; }
         else { pressed.attack = true; lastLeft = e.timeStamp; }
       } else {
-        if (isDoubleClick(lastRight, e.timeStamp)) { pressed.shield = true; lastRight = null; }
+        if (e.detail >= 2 || isDoubleClick(lastRight, e.timeStamp)) { pressed.shield = true; lastRight = null; }
         else lastRight = e.timeStamp;
         blockHeld = true;
       }
