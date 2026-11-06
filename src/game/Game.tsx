@@ -10,6 +10,7 @@ import WorldScene from "./WorldScene";
 import Camp from "./Camp";
 import Enemies from "./Enemies";
 import Hero from "./Hero";
+import { PALETTE } from "./Models";
 
 const game: GameState = createGame();
 const keys: Record<string, boolean> = {};
