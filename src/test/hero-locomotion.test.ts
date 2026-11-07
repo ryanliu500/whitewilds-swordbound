@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { createGame, emptyInput, step } from '../game/sim/game';
 import { heightAt, ISLAND } from '../game/sim/world';
+import { canFollowGround, turnTowards, walkableSlope } from '../game/sim/locomotion';
 
 describe('Phase 1A locomotion', () => {
+  it('walks 50-degree slopes but releases at sheer 60-degree faces', () => {
+    expect(walkableSlope(x => x * Math.tan(50 * Math.PI / 180), 0, 0)).toBe(true);
+    expect(walkableSlope(x => x * Math.tan(60 * Math.PI / 180), 0, 0)).toBe(false);
+    expect(canFollowGround(true, 0, 10, 0, 0.2, true)).toBe(false);
+    expect(canFollowGround(true, 0, 10, 9.8, 0.2, false)).toBe(false);
+  });
+  it('turns across the angle seam along the short arc at a bounded speed', () => {
+    const current = Math.PI - 0.05;
+    const next = turnTowards(current, -Math.PI + 0.05, 1 / 60);
+    expect(next).toBeGreaterThan(current);
+    expect(next - current).toBeLessThan(9 / 60);
+  });
   for (const hz of [20, 60, 120]) {
     for (const forward of [-1, 1]) {
       it(`keeps feet grounded on tutorial slopes at ${hz}Hz, direction ${forward}`, () => {
