@@ -62,8 +62,8 @@ export function Hood({ game }: { game: GameState }) {
         const fold = Math.sin(a * 7 + t * 2) * 0.012 * Math.sin(t * Math.PI);
         // A generous dome, pinched to ONE apex: no uncapped rim over the scalp.
         const y = t < 0.58 ? -0.34 + t / 0.58 * 0.58 : 0.24 + Math.sin(dome * Math.PI / 2) * 0.36;
-        const brow = front * Math.sin(dome * Math.PI) * 0.06;
-        pos.push(Math.sin(a) * (radius + fold), y - brow, Math.cos(a) * (radius + fold) * 1.06 - dome * 0.045 + 0.015);
+        const brow = front * Math.sin(dome * Math.PI) * 0.25;
+        pos.push(Math.sin(a) * (radius + fold), y - brow, Math.cos(a) * (radius + fold) * 1.06 - dome * 0.045 + 0.015 + front * Math.sin(dome * Math.PI) * 0.12);
         uv.push(u, t);
         if (r < rows && c < segs) { const i = r * (segs + 1) + c, j = i + segs + 1; idx.push(i, j, i + 1, i + 1, j, j + 1); }
       }

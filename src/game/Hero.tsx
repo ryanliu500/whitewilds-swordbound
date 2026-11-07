@@ -21,7 +21,7 @@ const M = {
   tunic: HERO_FABRIC.outer,
   tunicDark: HERO_FABRIC.lining,
   shirt: new THREE.MeshStandardMaterial({ color: "#f0eee9", flatShading: true }),
-  skin: new THREE.MeshStandardMaterial({ color: "#e8c9a8", flatShading: true }),
+  skin: new THREE.MeshStandardMaterial({ color: "#e8c9a8", roughness: 0.85 }),
   hair: new THREE.MeshStandardMaterial({ color: "#545e64", flatShading: true }),
   pants: new THREE.MeshStandardMaterial({ color: "#e8e6df", flatShading: true }),
   boot: new THREE.MeshStandardMaterial({ color: "#b8c9cc", flatShading: true }),
