@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { heightAt } from "./sim/world";
 import { angleDifference } from "./sim/locomotion";
 import type { GameState } from "./sim/game";
+import { COMBAT } from "./sim/combat";
 import { FlowingCloak, Hood, HERO_FABRIC } from './HeroGarments';
 
 /**
@@ -33,7 +34,7 @@ const M = {
 };
 
 type G = THREE.Group | null | undefined;
-type Keys = "root"|"pelvis"|"spine"|"head"|"shL"|"elL"|"shR"|"elR"|"blade"|"flapF"|"flapB"|"flapL"|"flapR"|"shield"|"hipL"|"kneeL"|"ankleL"|"hipR"|"kneeR"|"ankleR";
+type Keys = "sheath"|"root"|"pelvis"|"spine"|"head"|"shL"|"elL"|"shR"|"elR"|"blade"|"flapF"|"flapB"|"flapL"|"flapR"|"shield"|"hipL"|"kneeL"|"ankleL"|"hipR"|"kneeR"|"ankleR";
 const lerp = THREE.MathUtils.lerp;
 const damp = (a: number, b: number, k: number, dt: number) => lerp(a, b, 1 - Math.exp(-k * dt));
 
@@ -72,7 +73,7 @@ function Hand({ side }: { side: number }) {
 export default function Hero({ game }: { game: GameState }) {
   const r = useRef({} as Record<Keys, THREE.Group>);
   const set = (k: Keys) => (o: THREE.Group | null) => { if (o) r.current[k] = o; };
-  const st = useRef({ prevRot: NaN, turn: 0, pivot: 0, phase: 0, prevX: NaN, prevZ: NaN, speed: 0, fwd: 0, wasGrounded: true, land: 0, landK: 0, pelvis: 0, lean: 0, combo: 0, lastAttack: 0, footL: 0, footR: 0, t: 0, airT: 0 });
+  const st = useRef({ prevRot: NaN, turn: 0, pivot: 0, phase: 0, prevX: NaN, prevZ: NaN, speed: 0, fwd: 0, wasGrounded: true, land: 0, landK: 0, pelvis: 0, lean: 0, roll: 0, footL: 0, footR: 0, t: 0, airT: 0 });
   const shieldPose = useRef({ amount: 0, hiding: false });
 
   useFrame((_, delta) => {
@@ -119,12 +120,16 @@ export default function Hero({ game }: { game: GameState }) {
     s.land = Math.max(0, s.land - dt * 3.2);
     const landDip = Math.sin(s.land * Math.PI) * 0.45 * s.landK;
 
-    // --- attack combo (alternates R->L, L->R, overhead) ---
-    if (p.attack > 0.3 && s.t - s.lastAttack > 0.2) { s.combo = s.t - s.lastAttack < 0.9 ? (s.combo + 1) % 3 : 0; s.lastAttack = s.t; }
-    const atk = p.attack > 0 ? 1 - p.attack / 0.32 : -1; // 0..1 during swing
+    const P = attackPose(p.move.kind, p.move.t, p.vy);
+    g.blade.visible = p.sword > 0 || P !== null;
+    if (g.sheath) g.sheath.visible = !g.blade.visible;
 
     root.position.set(p.x, p.y, p.z);
-    root.rotation.y = p.rot;
+    root.rotation.y = p.rot + (P?.spinY ?? 0);
+    // ragdoll tumble / get-up: whole body rotates; lying flat then pushing up
+    if (p.ragdoll) { s.roll = -p.tumble; root.rotation.x = s.roll; root.position.y += 0.4; }
+    else if (p.move.kind === 'getup') { const u = Math.min(1, p.move.t / COMBAT.durations.getup!); const lie = -Math.PI / 2; s.roll = lerp(lie, 0, easeInOut(u)); root.rotation.x = s.roll; root.position.y += Math.sin(u * Math.PI) * 0.3 + (1 - u) * 0.3; }
+    else root.rotation.x = 0;
 
     // --- terrain under each foot (relative to body ground) ---
     const onTerrain = Math.abs(p.y - heightAt(p.x, p.z)) < 0.35 && p.grounded && !p.climbing;
@@ -163,7 +168,7 @@ export default function Hero({ game }: { game: GameState }) {
     const lowest = Math.min(s.footL, s.footR);
     const bob = moving && p.grounded ? Math.abs(Math.cos(s.phase)) * 0.06 * (0.5 + run) : 0;
     const breathe = !moving ? Math.sin(s.t * 2.2) * 0.012 : 0;
-    const guardCrouch = p.blocking ? 0.16 : 0;
+    const guardCrouch = (p.blocking ? 0.3 : 0) + (P?.crouch ?? 0);
     const targetPelvis = Math.min(0, lowest) - landDip - guardCrouch - bob - s.pivot * 0.07 + breathe - (moving ? 0.05 * run : 0.03);
     s.pelvis = damp(s.pelvis, targetPelvis, 16, dt);
     pelvis.position.y = HIP_Y + s.pelvis;
@@ -184,17 +189,19 @@ export default function Hero({ game }: { game: GameState }) {
     const leanT = (moving ? 0.08 * run + 0.22 * sprint : 0) + (p.blocking ? 0.12 : 0) + landDip * 0.5 + (p.swimming ? 0.9 : 0);
     s.lean = damp(s.lean, leanT, 8, dt);
     const twist = moving && p.grounded ? -Math.sin(s.phase) * 0.12 * (0.5 + run) : 0;
-    let atkTwist = 0;
-    if (atk >= 0 && s.combo < 2) { const dir = s.combo === 0 ? 1 : -1; atkTwist = dir * lerp(0.9, -1.0, easeOut(atk)); }
+    const atkTwist = P?.twist ?? (p.blocking ? 0.35 : 0);
+    if (P) s.lean = damp(s.lean, leanT + P.lean, 18, dt);
     pelvis.rotation.y = -twist * 0.5 - s.turn * 0.018;
-    spine.rotation.set(s.lean + (atk >= 0 && s.combo === 2 ? lerp(-0.25, 0.4, easeOut(atk)) : 0), twist + atkTwist + s.turn * 0.025, -s.turn * run * 0.012);
+    spine.rotation.set(s.lean + (P?.heave ?? 0), twist + atkTwist + s.turn * 0.025, -s.turn * run * 0.012);
     head.rotation.set(-s.lean * 0.6 + (p.swimming ? -0.7 : 0), -(twist + atkTwist) * 0.6 + s.turn * 0.025, s.turn * run * 0.006);
 
     // --- arms ---
     const armSwing = moving && p.grounded ? Math.sin(s.phase) * lerp(0.35, 0.9, run) : 0;
     // left arm (shield)
     let lx = -armSwing, lz = 0.18, le = -0.35 - run * 0.6, ly = 0;
-    if (p.blocking) { lx = -1.35; ly = 0.6; lz = 0.25; le = -1.3; }
+    if (p.ragdoll) { lx = -2.2 + Math.sin(s.t * 9) * 0.5; lz = 1.2; le = -0.4; }
+    else if (p.blocking) { lx = -1.25; ly = 0.9; lz = 0.35; le = -1.45; } // Link guard: forearm across the chest, shield face forward
+    else if (P) { lx = P.lx; lz = 0.35; le = -0.6; }
     else if (!p.grounded && !p.swimming && !p.climbing) { lx = -0.4; lz = 0.9; le = -0.3; }
     else if (p.swimming) { lx = -1.2 + Math.sin(s.t * 6) * 0.9; lz = 0.6; le = -0.4; }
     else if (p.climbing) { lx = -2.6 + Math.sin(s.t * 6) * 0.4; lz = 0.1; le = -0.6; }
@@ -205,13 +212,13 @@ export default function Hero({ game }: { game: GameState }) {
     elL.rotation.x = damp(elL.rotation.x, le, 14, dt);
     // right arm (sword)
     let rx = armSwing, rz = -0.18, re = -0.35 - run * 0.6, ry = 0;
-    if (atk >= 0) {
-      const e = easeOut(atk);
-      if (s.combo === 2) { rx = lerp(-2.9, -0.4, e); rz = -0.1; re = lerp(-0.3, -0.1, e); ry = 0; }
-      else { const dir = s.combo === 0 ? 1 : -1; rx = -1.45; ry = 0; rz = dir * lerp(-1.3, 1.1, e) - 0.2; re = -0.25; }
-      shR.rotation.set(rx, ry, rz); elR.rotation.x = re;
+    if (P) {
+      // fast but continuous: high damping instead of snapping
+      shR.rotation.set(damp(shR.rotation.x, P.rx, 30, dt), damp(shR.rotation.y, P.ry, 30, dt), damp(shR.rotation.z, P.rz, 30, dt));
+      elR.rotation.x = damp(elR.rotation.x, P.re, 30, dt);
     } else {
-      if (p.blocking) { rx = -0.7; rz = -0.35; re = -1.0; }
+      if (p.ragdoll) { rx = -2.2 + Math.cos(s.t * 9) * 0.5; rz = -1.2; re = -0.4; }
+      else if (p.blocking) { rx = 0.25; rz = -0.45; re = -0.9; } // sword held low and back
       else if (!p.grounded && !p.swimming && !p.climbing) { rx = -0.5; rz = -0.9; re = -0.4; }
       else if (p.swimming) { rx = -1.2 + Math.sin(s.t * 6 + Math.PI) * 0.9; rz = -0.6; re = -0.4; }
       else if (p.climbing) { rx = -2.6 + Math.sin(s.t * 6 + Math.PI) * 0.4; rz = -0.1; re = -0.6; }
@@ -220,7 +227,7 @@ export default function Hero({ game }: { game: GameState }) {
       elR.rotation.x = damp(elR.rotation.x, re, 14, dt);
     }
     // blade points forward during swing, rests angled down/back otherwise
-    blade.rotation.x = atk >= 0 ? 0 : damp(blade.rotation.x, p.blocking ? 0.2 : 0.9, 10, dt);
+    blade.rotation.x = damp(blade.rotation.x, P ? P.bx : p.blocking ? 1.2 : 0.9, P ? 30 : 10, dt);
 
     // --- tunic flaps follow thighs and velocity ---
     const hipAvg = (hipL.rotation.x + hipR.rotation.x) / 2;
@@ -275,7 +282,7 @@ export default function Hero({ game }: { game: GameState }) {
         <Limb length={FOREARM} forearm />
         <group position={[0, -FOREARM - 0.05, 0]}><Hand side={1} /></group>
         {/* shield strapped to the forearm */}
-        <group ref={set('shield')} name="hero-shield" visible={false} scale={0} position={[0.12, -FOREARM * 0.55, 0.05]} rotation-z={Math.PI / 2}>
+        <group ref={set('shield')} name="hero-shield" visible={false} scale={0} position={[0.16, -FOREARM * 0.55, 0.02]} rotation-z={Math.PI / 2}>
           <mesh rotation-x={Math.PI / 2} material={M.shield} castShadow><cylinderGeometry args={[0.38, 0.38, 0.06, 7]} /></mesh>
           <mesh position-y={0.04} rotation-x={Math.PI / 2} material={M.metal} castShadow><cylinderGeometry args={[0.1, 0.1, 0.05, 6]} /></mesh>
         </group>
@@ -302,6 +309,10 @@ export default function Hero({ game }: { game: GameState }) {
           <Box s={[0.08, 0.7, 0.04]} p={[0.1, 0.32, 0.27]} r={[0, 0, 0.6]} m={M.belt} />
           {/* sheath on the back */}
           <Box s={[0.1, 0.9, 0.14]} p={[0.05, 0.35, -0.3]} r={[0, 0, 0.7]} m={M.belt} />
+          <group ref={set("sheath")} position={[0.05, 0.35, -0.32]} rotation-z={0.7}>
+            <Box s={[0.05, 0.22, 0.05]} p={[0, 0.56, 0]} m={M.belt} />
+            <Box s={[0.36, 0.06, 0.06]} p={[0, 0.45, 0]} m={M.gold} />
+          </group>
           <mesh position-y={0.74} material={HERO_FABRIC.shadow} castShadow><cylinderGeometry args={[0.09, 0.11, 0.16, 6]} /></mesh>
           {armR}{armL}
           <group ref={set("head")} position-y={0.86}>
@@ -320,3 +331,36 @@ export default function Hero({ game }: { game: GameState }) {
 }
 
 function easeOut(t: number) { return 1 - Math.pow(1 - t, 3); }
+
+function easeInOut(t: number) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+const seg = (u: number, a: number, b: number) => THREE.MathUtils.clamp((u - a) / (b - a), 0, 1);
+
+type Pose = { rx: number; ry: number; rz: number; re: number; bx: number; twist: number; lean: number; crouch: number; spinY: number; lx: number; heave: number };
+/** Full-body keyframes per move: wind-up → arc → follow-through, all continuous in t. */
+function attackPose(kind: string, t: number, vy: number): Pose | null {
+  const d = COMBAT.durations[kind] ?? 1, u = t / d;
+  const base: Pose = { rx: -0.3, ry: 0, rz: -0.2, re: -0.4, bx: 0, twist: 0, lean: 0, crouch: 0, spinY: 0, lx: 0.4, heave: 0 };
+  const settle = 1 - easeInOut(seg(u, 0.6, 1)); // follow-through eases back to idle
+  const mix = (a: Pose, w: number): Pose => ({ ...a, rx: lerp(base.rx, a.rx, w), rz: lerp(base.rz, a.rz, w), re: lerp(base.re, a.re, w), twist: a.twist * w, lean: a.lean * w, crouch: a.crouch * w });
+  switch (kind) {
+    case 'slash1': { const k = easeInOut(seg(u, 0.12, 0.55)); // right → left horizontal crescent
+      return mix({ ...base, rx: -1.45, rz: lerp(-1.6, 1.4, k), re: -0.15, twist: lerp(0.9, -1.1, k), lean: 0.18, crouch: 0.12, lx: 0.6 }, Math.max(seg(u, 0, 0.12), settle)); }
+    case 'slash2': { const k = easeInOut(seg(u, 0.12, 0.55)); // low-left → high-right backhand
+      return mix({ ...base, rx: lerp(-0.7, -2.4, k), rz: lerp(1.3, -1.5, k), re: -0.2, twist: lerp(-1.0, 1.0, k), lean: 0.12, crouch: 0.1, lx: 0.8 }, Math.max(seg(u, 0, 0.12), settle)); }
+    case 'slash3': { const k = easeInOut(seg(u, 0.2, 0.55)); // overhead cleave with deep knee bend
+      return mix({ ...base, rx: lerp(-3.1, -0.35, k), rz: -0.1, re: lerp(-0.5, -0.05, k), twist: 0.1, lean: lerp(-0.3, 0.55, k), crouch: lerp(0, 0.38, k), lx: 0.3 }, Math.max(seg(u, 0, 0.2), settle)); }
+    case 'spin': { const k = easeInOut(seg(u, 0.22, 0.8)); // 360° whirl finisher
+      return { ...mix({ ...base, rx: -1.55, rz: -1.55, re: -0.05, twist: lerp(1.1, 0, k), lean: 0.1, crouch: 0.2 * Math.sin(u * Math.PI) }, Math.max(seg(u, 0, 0.22), settle)), spinY: k * Math.PI * 2 };
+    }
+    case 'jump': return { ...base, rx: vy > 0 ? -3.0 : -2.7, rz: -0.15, re: -0.6, lean: vy > 0 ? -0.35 : 0.1, crouch: 0, lx: -0.6 };
+    case 'jumpLand': { const k = easeOut(seg(u, 0, 0.18)); const rec = settle; // slam, then committed recovery
+      return { ...base, rx: lerp(-2.7, -0.15, k), re: -0.05, bx: 0, lean: 0.65 * rec, crouch: 0.5 * rec, lx: lerp(0.4, 1.0, rec) }; }
+    case 'thrustWind': { const k = easeInOut(seg(u, 0, 1)); // drawing the blade back while sprinting
+      return { ...base, rx: lerp(-0.2, 0.75, k), rz: -0.35, re: lerp(-0.4, -1.7, k), bx: lerp(0.9, 1.45, k), lean: 0.4 * k, crouch: 0.12 * k, twist: 0.45 * k, lx: 0.5 }; }
+    case 'thrust': { const tired = seg(t, COMBAT.thrustDecel, COMBAT.thrustDecel + COMBAT.thrustFatigue); // forward lunge, then heaving
+      return { ...base, rx: -1.5 + tired * 0.35, rz: -0.05, re: 0, bx: 1.45, lean: 0.6 - tired * 0.15, crouch: 0.18 + tired * 0.12, twist: -0.25, lx: 0.9, heave: Math.sin(t * 7) * 0.09 * tired }; }
+    case 'thrustEnd': { const k = easeInOut(seg(u, 0, 1)); // straightening out of the lean
+      return { ...base, rx: lerp(-1.5, base.rx, k), re: lerp(0, base.re, k), bx: lerp(1.45, 0.9, k), lean: 0.6 * (1 - k), crouch: 0.2 * (1 - k), twist: -0.25 * (1 - k), lx: lerp(0.9, 0.2, k), heave: Math.sin(t * 6) * 0.06 * (1 - k) }; }
+    default: return null;
+  }
+}
