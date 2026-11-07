@@ -20,7 +20,8 @@ let blockHeld = false;
 if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __game: GameState }).__game = game;
 
 function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
-  const { camera, gl } = useThree();
+  const { camera, gl, scene } = useThree();
+  const inspection = useRef(false);
   const cam = useRef({ yaw: 0, pitch: 0.35, dist: 12 });
   const hero = useRef<THREE.Group>(null);
   const sword = useRef<THREE.Mesh>(null);
@@ -28,6 +29,26 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
   const arm = useRef<THREE.Group>(null);
   const legL = useRef<THREE.Mesh>(null), legR = useRef<THREE.Mesh>(null);
   const walk = useRef(0);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const debug = {
+      sim(seconds: number, input = emptyInput()) {
+        for (let n = 0; n < Math.round(seconds * 60); n++) step(game, input, 1 / 60);
+      },
+      view(side: 'front' | 'back' | 'play' = 'front') {
+        inspection.current = side !== 'play';
+        if (!inspection.current) return;
+        const p = game.player, sign = side === 'front' ? 1 : -1;
+        camera.position.set(p.x + Math.sin(p.rot) * 4.5 * sign, p.y + 2.2, p.z + Math.cos(p.rot) * 4.5 * sign);
+        camera.lookAt(p.x, p.y + 1.6, p.z);
+      },
+      get hero() { return scene.getObjectByName('hero-root'); },
+    };
+    const target = window as unknown as { __heroDebug?: typeof debug };
+    target.__heroDebug = debug;
+    return () => { delete target.__heroDebug; };
+  }, [camera, scene]);
 
   useEffect(() => {
     const el = gl.domElement;
@@ -99,9 +120,11 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     }
     void sword;
     const t = new THREE.Vector3(p.x, p.y + 2, p.z);
-    camera.position.set(t.x + Math.sin(c.yaw) * Math.cos(c.pitch) * c.dist, t.y + Math.sin(c.pitch) * c.dist, t.z + Math.cos(c.yaw) * Math.cos(c.pitch) * c.dist);
-    camera.position.y = Math.max(camera.position.y, heightAt(camera.position.x, camera.position.z) + 1);
-    camera.lookAt(t);
+    if (!inspection.current) {
+      camera.position.set(t.x + Math.sin(c.yaw) * Math.cos(c.pitch) * c.dist, t.y + Math.sin(c.pitch) * c.dist, t.z + Math.cos(c.yaw) * Math.cos(c.pitch) * c.dist);
+      camera.position.y = Math.max(camera.position.y, heightAt(camera.position.x, camera.position.z) + 1);
+      camera.lookAt(t);
+    }
     acc.current += d;
     if (acc.current > 1 / 30) { acc.current = 0; onTick(); }
   });
