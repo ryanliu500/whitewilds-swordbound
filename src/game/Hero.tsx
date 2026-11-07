@@ -1,7 +1,8 @@
 import { useFrame } from "@react-three/fiber";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { heightAt } from "./sim/world";
+import { angleDifference } from "./sim/locomotion";
 import type { GameState } from "./sim/game";
 import { FlowingCloak, Hood, HERO_FABRIC } from './HeroGarments';
 
@@ -19,16 +20,16 @@ const UPPER_ARM = 0.5, FOREARM = 0.46;
 const M = {
   tunic: HERO_FABRIC.outer,
   tunicDark: HERO_FABRIC.lining,
-  shirt: new THREE.MeshStandardMaterial({ color: "#d8cfb8", flatShading: true }),
+  shirt: new THREE.MeshStandardMaterial({ color: "#f0eee9", flatShading: true }),
   skin: new THREE.MeshStandardMaterial({ color: "#e8c9a8", flatShading: true }),
-  hair: new THREE.MeshStandardMaterial({ color: "#d9b25a", flatShading: true }),
-  pants: new THREE.MeshStandardMaterial({ color: "#e9e2cf", flatShading: true }),
-  boot: new THREE.MeshStandardMaterial({ color: "#5a3b26", flatShading: true }),
-  belt: new THREE.MeshStandardMaterial({ color: "#4a3020", flatShading: true }),
+  hair: new THREE.MeshStandardMaterial({ color: "#545e64", flatShading: true }),
+  pants: new THREE.MeshStandardMaterial({ color: "#e8e6df", flatShading: true }),
+  boot: new THREE.MeshStandardMaterial({ color: "#b8c9cc", flatShading: true }),
+  belt: new THREE.MeshStandardMaterial({ color: "#56636b", flatShading: true }),
   metal: new THREE.MeshStandardMaterial({ color: "#cfd8e0", metalness: 0.7, roughness: 0.25, flatShading: true }),
   gold: new THREE.MeshStandardMaterial({ color: "#c9a23a", metalness: 0.6, roughness: 0.35, flatShading: true }),
   shield: new THREE.MeshStandardMaterial({ color: "#6b4a2e", flatShading: true }),
-  eye: new THREE.MeshStandardMaterial({ color: "#1d3b5c", flatShading: true }),
+  eye: new THREE.MeshStandardMaterial({ color: "#38bdf8", emissive: "#00e5ff", emissiveIntensity: 3, toneMapped: false }),
 };
 
 type G = THREE.Group | null | undefined;
@@ -49,18 +50,38 @@ function Box({ s, p = [0, 0, 0], m, r }: { s: [number, number, number]; p?: [num
   return <mesh position={p} rotation={r ?? [0, 0, 0]} material={m} castShadow receiveShadow><boxGeometry args={s} /></mesh>;
 }
 
+/** Tapered muscle silhouettes preserve the existing articulated rig. */
+function Limb({ length, forearm = false }: { length: number; forearm?: boolean }) {
+  const geometry = useMemo(() => {
+    const points = forearm
+      ? [[0, 0], [0.055, 0.01], [0.072, 0.07], [0.093, length * 0.52], [0.088, length * 0.82], [0.063, length - 0.015], [0, length]]
+      : [[0, 0], [0.062, 0.015], [0.083, length * 0.28], [0.112, length * 0.65], [0.115, length * 0.82], [0.075, length - 0.012], [0, length]];
+    const g = new THREE.LatheGeometry(points.map(([x, y]) => new THREE.Vector2(x ?? 0, y ?? 0)), 12);
+    g.translate(0, -length, 0); g.scale(1, 1, 0.88);
+    return g;
+  }, [length, forearm]);
+  return <mesh geometry={geometry} material={forearm ? M.skin : M.shirt} castShadow receiveShadow />;
+}
+function Hand({ side }: { side: number }) {
+  return <group>
+    <mesh scale={[0.075, 0.10, 0.064]} material={M.skin} castShadow><sphereGeometry args={[1, 12, 8]} /></mesh>
+    <mesh position={[side * 0.067, 0.015, 0.035]} rotation-z={side * 0.4} material={M.skin} castShadow><capsuleGeometry args={[0.028, 0.06, 4, 8]} /></mesh>
+  </group>;
+}
+
 export default function Hero({ game }: { game: GameState }) {
   const r = useRef({} as Record<Keys, THREE.Group>);
   const set = (k: Keys) => (o: THREE.Group | null) => { if (o) r.current[k] = o; };
-  const st = useRef({ phase: 0, prevX: NaN, prevZ: NaN, speed: 0, fwd: 0, wasGrounded: true, land: 0, landK: 0, pelvis: 0, lean: 0, combo: 0, lastAttack: 0, footL: 0, footR: 0, t: 0, airT: 0 });
+  const st = useRef({ prevRot: NaN, turn: 0, pivot: 0, phase: 0, prevX: NaN, prevZ: NaN, speed: 0, fwd: 0, wasGrounded: true, land: 0, landK: 0, pelvis: 0, lean: 0, combo: 0, lastAttack: 0, footL: 0, footR: 0, t: 0, airT: 0 });
   const shieldPose = useRef({ amount: 0, hiding: false });
 
   useFrame((_, delta) => {
     const g = r.current, s = st.current, p = game.player;
     const dt = Math.min(delta, 0.05);
-    s.t += dt;
+
     const root = g.root; if (!root) return;
     if (game.paused) return;
+    s.t += dt;
     const { pelvis, spine, head, shL, elL, shR, elR, blade, flapF, flapB, flapL, flapR, hipL, hipR, shield } = g;
     if (!pelvis || !spine || !head || !shL || !elL || !shR || !elR || !blade || !flapF || !flapB || !flapL || !flapR || !hipL || !hipR || !shield) return;
     const reveal = p.shieldTime > 0;
@@ -82,6 +103,11 @@ export default function Hero({ game }: { game: GameState }) {
     s.speed = game.paused ? 0 : damp(s.speed, sp > 60 ? 0 : sp, 12, dt);
     const fwdDot = Math.sin(p.rot) * vx + Math.cos(p.rot) * vz;
     s.fwd = damp(s.fwd, fwdDot, 10, dt);
+    if (Number.isNaN(s.prevRot)) s.prevRot = p.rot;
+    const turnRate = angleDifference(p.rot, s.prevRot) / Math.max(dt, 0.001);
+    s.prevRot = p.rot;
+    s.turn = damp(s.turn, THREE.MathUtils.clamp(turnRate, -9, 9), 10, dt);
+    s.pivot = damp(s.pivot, p.grounded ? Math.max(0, Math.abs(s.turn) - 4) / 5 : 0, 10, dt);
     const moving = s.speed > 0.8;
     const run = THREE.MathUtils.clamp(s.speed / 14, 0, 1);
     const sprint = THREE.MathUtils.clamp((s.speed - 16) / 12, 0, 1);
@@ -138,7 +164,7 @@ export default function Hero({ game }: { game: GameState }) {
     const bob = moving && p.grounded ? Math.abs(Math.cos(s.phase)) * 0.06 * (0.5 + run) : 0;
     const breathe = !moving ? Math.sin(s.t * 2.2) * 0.012 : 0;
     const guardCrouch = p.blocking ? 0.16 : 0;
-    const targetPelvis = Math.min(0, lowest) - landDip - guardCrouch - bob + breathe - (moving ? 0.05 * run : 0.03);
+    const targetPelvis = Math.min(0, lowest) - landDip - guardCrouch - bob - s.pivot * 0.07 + breathe - (moving ? 0.05 * run : 0.03);
     s.pelvis = damp(s.pelvis, targetPelvis, 16, dt);
     pelvis.position.y = HIP_Y + s.pelvis;
 
@@ -147,7 +173,7 @@ export default function Hero({ game }: { game: GameState }) {
       const dy = foot + FOOT_H + t.up - (HIP_Y + s.pelvis);
       const sol = solveLeg(t.fz, dy);
       hip.rotation.x = sol.hip; knee.rotation.x = sol.knee;
-      hip.rotation.z = side * 0.04;
+      hip.rotation.z = side * (0.04 + s.pivot * 0.1);
       const footPitch = onTerrain && t.up < 0.05 ? -Math.atan(slopeAt(side * HIP_X, t.fz)) : (t.up > 0.05 ? 0.35 : 0);
       ankle.rotation.x = footPitch - (sol.hip + sol.knee);
     };
@@ -160,9 +186,9 @@ export default function Hero({ game }: { game: GameState }) {
     const twist = moving && p.grounded ? -Math.sin(s.phase) * 0.12 * (0.5 + run) : 0;
     let atkTwist = 0;
     if (atk >= 0 && s.combo < 2) { const dir = s.combo === 0 ? 1 : -1; atkTwist = dir * lerp(0.9, -1.0, easeOut(atk)); }
-    pelvis.rotation.y = -twist * 0.5;
-    spine.rotation.set(s.lean + (atk >= 0 && s.combo === 2 ? lerp(-0.25, 0.4, easeOut(atk)) : 0), twist + atkTwist, 0);
-    head.rotation.set(-s.lean * 0.6 + (p.swimming ? -0.7 : 0), -(twist + atkTwist) * 0.6, 0);
+    pelvis.rotation.y = -twist * 0.5 - s.turn * 0.018;
+    spine.rotation.set(s.lean + (atk >= 0 && s.combo === 2 ? lerp(-0.25, 0.4, easeOut(atk)) : 0), twist + atkTwist + s.turn * 0.025, -s.turn * run * 0.012);
+    head.rotation.set(-s.lean * 0.6 + (p.swimming ? -0.7 : 0), -(twist + atkTwist) * 0.6 + s.turn * 0.025, s.turn * run * 0.006);
 
     // --- arms ---
     const armSwing = moving && p.grounded ? Math.sin(s.phase) * lerp(0.35, 0.9, run) : 0;
@@ -220,13 +246,14 @@ export default function Hero({ game }: { game: GameState }) {
 
   const armR = (
     <group ref={set("shR")} position={[-0.42, 0.62, 0]}>
-      <Box s={[0.2, 0.2, 0.2]} m={M.tunic} />
-      <Box s={[0.16, UPPER_ARM, 0.16]} p={[0, -UPPER_ARM / 2, 0]} m={M.shirt} />
+      <mesh scale={[0.13, 0.14, 0.12]} material={M.tunic} castShadow><sphereGeometry args={[1, 12, 8]} /></mesh>
+      <Limb length={UPPER_ARM} />
       <group ref={set("elR")} position={[0, -UPPER_ARM, 0]}>
-        <Box s={[0.15, FOREARM, 0.15]} p={[0, -FOREARM / 2, 0]} m={M.shirt} />
-        <Box s={[0.18, 0.14, 0.18]} p={[0, -FOREARM + 0.06, 0]} m={M.belt} />
+        <mesh material={M.skin} castShadow><sphereGeometry args={[0.073, 12, 8]} /></mesh>
+        <Limb length={FOREARM} forearm />
+        <mesh position={[0, -FOREARM + 0.06, 0]} material={M.belt} castShadow><cylinderGeometry args={[0.064, 0.062, 0.075, 12]} /></mesh>
         <group position={[0, -FOREARM - 0.06, 0]}>
-          <mesh material={M.skin} castShadow><icosahedronGeometry args={[0.09, 0]} /></mesh>
+          <Hand side={-1} />
           {/* sword gripped in the fist */}
           <group ref={set("blade")}>
             <Box s={[0.05, 0.05, 0.22]} p={[0, 0, -0.02]} m={M.belt} />
@@ -241,11 +268,12 @@ export default function Hero({ game }: { game: GameState }) {
 
   const armL = (
     <group ref={set("shL")} position={[0.42, 0.62, 0]}>
-      <Box s={[0.2, 0.2, 0.2]} m={M.tunic} />
-      <Box s={[0.16, UPPER_ARM, 0.16]} p={[0, -UPPER_ARM / 2, 0]} m={M.shirt} />
+      <mesh scale={[0.13, 0.14, 0.12]} material={M.tunic} castShadow><sphereGeometry args={[1, 12, 8]} /></mesh>
+      <Limb length={UPPER_ARM} />
       <group ref={set("elL")} position={[0, -UPPER_ARM, 0]}>
-        <Box s={[0.15, FOREARM, 0.15]} p={[0, -FOREARM / 2, 0]} m={M.shirt} />
-        <mesh position={[0, -FOREARM - 0.05, 0]} material={M.skin} castShadow><icosahedronGeometry args={[0.09, 0]} /></mesh>
+        <mesh material={M.skin} castShadow><sphereGeometry args={[0.073, 12, 8]} /></mesh>
+        <Limb length={FOREARM} forearm />
+        <group position={[0, -FOREARM - 0.05, 0]}><Hand side={1} /></group>
         {/* shield strapped to the forearm */}
         <group ref={set('shield')} name="hero-shield" visible={false} scale={0} position={[0.12, -FOREARM * 0.55, 0.05]} rotation-z={Math.PI / 2}>
           <mesh rotation-x={Math.PI / 2} material={M.shield} castShadow><cylinderGeometry args={[0.38, 0.38, 0.06, 7]} /></mesh>
@@ -256,7 +284,7 @@ export default function Hero({ game }: { game: GameState }) {
   );
 
   return (
-    <group ref={set("root")}>
+    <group ref={set("root")} name="hero-root">
       <group ref={set("pelvis")} position-y={HIP_Y}>
         <Box s={[0.56, 0.22, 0.34]} m={M.pants} />
         <Box s={[0.6, 0.1, 0.38]} p={[0, 0.12, 0]} m={M.belt} />
@@ -277,10 +305,13 @@ export default function Hero({ game }: { game: GameState }) {
           <mesh position-y={0.74} material={HERO_FABRIC.shadow} castShadow><cylinderGeometry args={[0.09, 0.11, 0.16, 6]} /></mesh>
           {armR}{armL}
           <group ref={set("head")} position-y={0.86}>
-            <mesh position-y={0.18} material={M.skin} castShadow><icosahedronGeometry args={[0.27, 1]} /></mesh>
+            <mesh name="hero-face" position-y={0.18} scale={[0.92, 1.08, 0.92]} material={M.skin} castShadow><sphereGeometry args={[0.27, 20, 14]} /></mesh>
+            <mesh position={[0, 0.12, 0.247]} scale={[0.046, 0.075, 0.059]} material={M.skin} castShadow><sphereGeometry args={[1, 10, 8]} /></mesh>
+            <mesh position={[0, 0.01, 0.20]} scale={[0.115, 0.058, 0.045]} material={M.skin} castShadow><sphereGeometry args={[1, 12, 8]} /></mesh>
+            <Box s={[0.085, 0.012, 0.018]} p={[0, 0.052, 0.247]} m={M.hair} />
             <Hood game={game} />
-            <Box s={[0.07, 0.08, 0.02]} p={[0.1, 0.2, 0.25]} m={M.eye} />
-            <Box s={[0.07, 0.08, 0.02]} p={[-0.1, 0.2, 0.25]} m={M.eye} />
+            <mesh name="hero-eye-left" position={[0.098, 0.2, 0.249]} scale={[0.045, 0.024, 0.014]} material={M.eye}><sphereGeometry args={[1, 12, 8]} /></mesh>
+            <mesh name="hero-eye-right" position={[-0.098, 0.2, 0.249]} scale={[0.045, 0.024, 0.014]} material={M.eye}><sphereGeometry args={[1, 12, 8]} /></mesh>
           </group>
         </group>
       </group>
