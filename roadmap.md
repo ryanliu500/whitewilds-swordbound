@@ -1,5 +1,5 @@
 # Hero and world roadmap
-- [ ] Phase 1A (current): smooth slope contact, animated turns/pivots, organic arms, closed wavy ivory hood/cloak, visible face and blue eyes; tests and browser checks.
+- [x] Phase 1A: smooth slope contact, animated turns/pivots, organic arms, closed wavy ivory hood/cloak, visible face and blue eyes; 16 tests pass, front/back/small-screen captures and downhill keyboard flow verified. Real-device feel remains for user review.
 - [ ] Phase 1B: full-body sword combos, instant Q guard with 6-second inactivity stow, aligned shield, player physical knockback/defeat.
 - [ ] Phase 2A: 280m grass/enemies/tree details, 400m camp micro-details, 700m base trees, 1800m buildings; colossal landmark exemptions.
 - [ ] Phase 2B: terrain-anchored palisade stakes, sealed corners, E ladder mount/dismount/top descent, hatch, auto exit at ends, Space animated leap-off.
