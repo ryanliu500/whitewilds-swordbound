@@ -6,29 +6,25 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { ISLAND, TOWNS, TOWN_NAMES, WORLD_R, heightAt } from "./sim/world";
 import { RULES, createGame, emptyInput, step, type GameState } from "./sim/game";
+import { COMBAT } from "./sim/combat";
+const RULES_GAMEOVER = COMBAT.gameOverSeconds;
 import WorldScene from "./WorldScene";
 import Camp from "./Camp";
 import Enemies from "./Enemies";
 import Hero from "./Hero";
-import { isDoubleClick } from "./sim/shield";
 import { PALETTE } from "./Models";
 
 const game: GameState = createGame();
 const keys: Record<string, boolean> = {};
-const pressed = { jump: false, attack: false, interact: false, hop: false, shield: false };
-let blockHeld = false;
+const pressed = { jump: false, attack: false, interact: false, hop: false };
+let attackHeld = false;
 if (import.meta.env.DEV && typeof window !== "undefined") (window as unknown as { __game: GameState }).__game = game;
 
 function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
   const { camera, gl, scene } = useThree();
   const inspection = useRef(false);
   const cam = useRef({ yaw: 0, pitch: 0.35, dist: 12 });
-  const hero = useRef<THREE.Group>(null);
-  const sword = useRef<THREE.Mesh>(null);
   const acc = useRef(0);
-  const arm = useRef<THREE.Group>(null);
-  const legL = useRef<THREE.Mesh>(null), legR = useRef<THREE.Mesh>(null);
-  const walk = useRef(0);
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -52,8 +48,6 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
 
   useEffect(() => {
     const el = gl.domElement;
-    let lastLeft: number | null = null;
-    let lastRight: number | null = null;
     const kd = (e: KeyboardEvent) => {
       if (!keys[e.code]) {
         if (e.code === "Space") pressed.jump = true;
@@ -65,16 +59,9 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     const ku = (e: KeyboardEvent) => (keys[e.code] = false);
     const down = (e: MouseEvent) => {
       if (document.pointerLockElement !== el) { el.requestPointerLock?.(); return; }
-      if (e.button === 0 && !e.ctrlKey) {
-        if (e.detail >= 2 || isDoubleClick(lastLeft, e.timeStamp)) { pressed.shield = true; lastLeft = null; }
-        else { pressed.attack = true; lastLeft = e.timeStamp; }
-      } else {
-        if (e.detail >= 2 || isDoubleClick(lastRight, e.timeStamp)) { pressed.shield = true; lastRight = null; }
-        else lastRight = e.timeStamp;
-        blockHeld = true;
-      }
+      if (e.button === 0 && !e.ctrlKey) { pressed.attack = true; attackHeld = true; }
     };
-    const up = () => (blockHeld = false);
+    const up = (e: MouseEvent) => { if (e.button === 0) attackHeld = false; };
     const ctx = (e: Event) => { e.preventDefault(); };
     const move = (e: PointerEvent) => {
       if (document.pointerLockElement !== el) return;
@@ -98,27 +85,12 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     const i = emptyInput();
     i.forward = (keys["KeyW"] ? 1 : 0) - (keys["KeyS"] ? 1 : 0);
     i.strafe = (keys["KeyD"] ? 1 : 0) - (keys["KeyA"] ? 1 : 0);
-    i.yaw = c.yaw; i.sprint = !!keys["ShiftLeft"]; i.block = blockHeld;
-    i.shield = pressed.shield;
+    i.yaw = c.yaw; i.sprint = !!keys["ShiftLeft"]; i.guard = !!keys["KeyQ"]; i.attackHeld = attackHeld;
     i.jump = pressed.jump; i.attack = pressed.attack; i.interact = pressed.interact;
     i.hop = pressed.hop || (pressed.jump && !game.player.grounded);
-    pressed.jump = pressed.attack = pressed.interact = pressed.hop = pressed.shield = false;
+    pressed.jump = pressed.attack = pressed.interact = pressed.hop = false;
     step(game, i, d);
     const p = game.player;
-    if (hero.current) { hero.current.position.set(p.x, p.y + 0.35, p.z); hero.current.rotation.y = p.rot; }
-    const isMoving = (i.forward !== 0 || i.strafe !== 0) && !paused;
-    if (isMoving) walk.current += Math.min(d, 0.05) * 11;
-    const sw = isMoving && p.grounded ? Math.sin(walk.current) * 0.6 : 0;
-    if (legL.current) legL.current.rotation.x = sw;
-    if (legR.current) legR.current.rotation.x = -sw;
-    if (arm.current) {
-      // swing: raised overhead -> slashed down-forward
-      const t = p.attack > 0 ? 1 - p.attack / 0.32 : -1;
-      if (t >= 0) { arm.current.rotation.x = -2.6 + t * 3.0; arm.current.rotation.z = 0.4 - t * 0.8; arm.current.rotation.y = 0; }
-      else if (p.blocking) { arm.current.rotation.x = -1.5; arm.current.rotation.z = 0; arm.current.rotation.y = -1.2; }
-      else { arm.current.rotation.x = 0.35 - sw * 0.4; arm.current.rotation.z = 0.15; arm.current.rotation.y = 0; }
-    }
-    void sword;
     const t = new THREE.Vector3(p.x, p.y + 2, p.z);
     if (!inspection.current) {
       camera.position.set(t.x + Math.sin(c.yaw) * Math.cos(c.pitch) * c.dist, t.y + Math.sin(c.pitch) * c.dist, t.z + Math.cos(c.yaw) * Math.cos(c.pitch) * c.dist);
@@ -209,6 +181,11 @@ function Hud() {
         )}
         {game.boots && <div className="text-xs text-foreground">Winged Boots · F (or Space mid-air) to hop</div>}
       </div>
+      {game.gameOver > 0 && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background transition-opacity" style={{ opacity: Math.min(1, (RULES_GAMEOVER - game.gameOver) / 0.6) }}>
+          <div className="text-2xl font-semibold tracking-wide text-foreground">{game.gameOverText}</div>
+        </div>
+      )}
       {game.messageTime > 0 && (
         <div className="pointer-events-none absolute left-1/2 top-1/4 -translate-x-1/2 rounded-md bg-background/70 px-4 py-2 text-lg font-semibold text-foreground">{game.message}</div>
       )}
@@ -252,7 +229,7 @@ export default function Game() {
       <MiniMap />
       <Hud />
       <div className="pointer-events-none absolute left-4 top-4 max-w-xs rounded-md bg-background/70 px-3 py-2 text-xs text-foreground">
-        Click to look · WASD move · Shift sprint · Space jump · Left-click attack · Right/two-finger click block · E interact · Esc map
+        Click to look · WASD move · Shift sprint · Space jump · Click attack (hold while sprinting to thrust) · Q shield · E interact · Esc map
       </div>
       {menu && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background/80 p-4 backdrop-blur-sm">
