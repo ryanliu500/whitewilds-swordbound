@@ -6,8 +6,8 @@ export const COMBAT = {
   shieldStow: 6,        // seconds without guarding before the shield is stowed
   comboWindow: 0.55,    // time after a slash ends to continue the combo
   chainAt: 0.6,         // fraction of a slash after which the next slash may start
-  durations: { slash1: 0.5, slash2: 0.5, slash3: 0.62, spin: 0.9, jumpLand: 0.8, thrustWind: 1.5, thrustEnd: 1.5, getup: 1.5 } as Record<string, number>,
-  damage: { slash1: 25, slash2: 25, slash3: 32, spin: 38, jumpLand: 50, thrust: 18 } as Record<string, number>,
+  durations: { slash1: 0.5, slash2: 0.5, slash3: 0.62, spin: 0.9, jumpLand: 0.8, thrustWind: 1.5, thrustEnd: 1.5, getup: 1.5 } as Record<string, number> & Record<"slash1"|"slash2"|"slash3"|"spin"|"jumpLand"|"thrustWind"|"thrustEnd"|"getup"|"thrust", number>,
+  damage: { slash1: 25, slash2: 25, slash3: 32, spin: 38, jumpLand: 50, thrust: 18 } as Record<string, number> & Record<"slash1"|"slash2"|"slash3"|"spin"|"jumpLand"|"thrustWind"|"thrustEnd"|"getup"|"thrust", number>,
   thrustTick: 0.4,
   sprintSpeed: 30.8, jogSpeed: 14, limpSpeed: 2.5,
   thrustDecel: 2, thrustFatigue: 4,
