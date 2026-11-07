@@ -1,6 +1,10 @@
-# Tutorial island
-- [ ] Expand island, hills, grass, trails and solid trees.
-- [ ] Fortress, tents, campfire and ladder tower.
-- [ ] Jump, attack, block, health, guards, sniper, boss and physical falls.
-- [ ] Boss door, chest and Winged Boots forward hops.
-- [ ] Preserve maps/drowning; real pause; tests and browser checks.
+# Hero and world roadmap
+- [ ] Phase 1A (current): smooth slope contact, animated turns/pivots, organic arms, closed wavy ivory hood/cloak, visible face and blue eyes; tests and browser checks.
+- [ ] Phase 1B: full-body sword combos, instant Q guard with 6-second inactivity stow, aligned shield, player physical knockback/defeat.
+- [ ] Phase 2A: 280m grass/enemies/tree details, 400m camp micro-details, 700m base trees, 1800m buildings; colossal landmark exemptions.
+- [ ] Phase 2B: terrain-anchored palisade stakes, sealed corners, E ladder mount/dismount/top descent, hatch, auto exit at ends, Space animated leap-off.
+- [ ] Phase 3A: organic enemies without backpacks, varied/unarmed equipment, real textured ragdolls, common disarms, Watcher bow on platform (persistent until unlocked).
+- [ ] Phase 3B: living camp behaviors, 70m leash with run-back through entrance, seven bow scouts dissolving on boss defeat.
+- [ ] Phase 4: Map/Inventory/Travel Code tabs, scrollable visual gear catalog, damage/defense stats, draggable melee/bow/shield slots, unlock-on-pickup and duplicate cleanup; Winged Boots multi-jumps, 0.2s cooldown, four-icon meter, 5s progressive ground recharge and cloak gust wing reveal.
+- [ ] Phase 5: fixed map-wide foliage, detailed varied trees, 280m detail/700m base visibility, textured pale ground with subtle tapered green grass patches.
+- [ ] Phase 7 (after the above): start menu, opening cutscenes and tutorial scout/general fighting introduction.
