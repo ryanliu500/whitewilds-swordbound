@@ -13,3 +13,4 @@
 - Hero garments are procedural articulated attachments; shield input/timing stays in pure simulation helpers, while draw/stow and cloth deformation remain render-only.
 - Ground adhesion and bounded shortest-arc turning live in pure sim/locomotion helpers; reject sheer slopes/large ledges and preserve intentional jumping so terrain fixes do not mask movement bugs.
 - Keep the existing dev-only window.__game state hook; window.__heroDebug exposes sim(seconds,input), view(front/back/play), and hero for fixed-step locomotion and close-up garment verification without changing production controls.
+- Player ragdoll is a pure verlet particle body in src/game/sim/ragdoll.ts (separate upper/lower torso, limited spine, free shoulders, self/obstacle/enemy contacts); Hero.tsx only aims joints at the particles, so physics stays testable without three.js.
