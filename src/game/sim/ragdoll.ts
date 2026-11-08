@@ -53,7 +53,7 @@ export const CONTACT_PAIRS: [number, number][] = [];
 for (let a = 0; a < PARTS.length; a++) for (let b = a + 1; b < PARTS.length; b++) if (!linked.has(`${a}-${b}`)) CONTACT_PAIRS.push([a, b]);
 
 export type World = { ground: (x: number, z: number, y: number) => number; push?: (p: V3, r: number) => void };
-export const RAG = { gravity: 28, iterations: 10, groundFriction: 9, airDrag: 0.15, bounce: 0.25, stillSpeed: 0.8 };
+export const RAG = { gravity: 28, iterations: 10, groundFriction: 18, airDrag: 0.15, bounce: 0.25, stillSpeed: 0.8 };
 
 /** Builds the ragdoll from the standing pose and throws it with velocity (vx,vy,vz) plus a torso hit spin. */
 export function createRagdoll(x: number, y: number, z: number, rot: number, v: V3, dt = 1 / 60): Ragdoll {

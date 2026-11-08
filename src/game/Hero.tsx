@@ -5,6 +5,7 @@ import { heightAt } from "./sim/world";
 import { angleDifference } from "./sim/locomotion";
 import type { GameState } from "./sim/game";
 import { COMBAT } from "./sim/combat";
+import { groundedOffset, HERO_MOTION, smooth, type ClothCapsule } from "./sim/heroPresentation";
 import { partPos, type Part, type Ragdoll } from "./sim/ragdoll";
 import { FlowingCloak, Hood, HERO_FABRIC } from './HeroGarments';
 
@@ -35,7 +36,7 @@ const M = {
 };
 
 type G = THREE.Group | null | undefined;
-type Keys = "sheath"|"root"|"pelvis"|"spine"|"head"|"shL"|"elL"|"shR"|"elR"|"blade"|"flapF"|"flapB"|"flapL"|"flapR"|"shield"|"hipL"|"kneeL"|"ankleL"|"hipR"|"kneeR"|"ankleR";
+type Keys = "swordGrip"|"shieldGrip"|"sheath"|"root"|"pelvis"|"spine"|"head"|"shL"|"elL"|"shR"|"elR"|"blade"|"flapF"|"flapB"|"flapL"|"flapR"|"shield"|"hipL"|"kneeL"|"ankleL"|"hipR"|"kneeR"|"ankleR";
 const lerp = THREE.MathUtils.lerp;
 const damp = (a: number, b: number, k: number, dt: number) => lerp(a, b, 1 - Math.exp(-k * dt));
 
@@ -94,6 +95,8 @@ export default function Hero({ game }: { game: GameState }) {
   const set = (k: Keys) => (o: THREE.Group | null) => { if (o) r.current[k] = o; };
   const st = useRef({ prevRot: NaN, turn: 0, pivot: 0, phase: 0, prevX: NaN, prevZ: NaN, speed: 0, fwd: 0, wasGrounded: true, land: 0, landK: 0, pelvis: 0, lean: 0, roll: 0, footL: 0, footR: 0, t: 0, airT: 0 });
   const shieldPose = useRef({ amount: 0, hiding: false });
+  const swordPose = useRef({ amount: 0 });
+  const recovery = useRef({ active: false, positions: {} as Partial<Record<Keys, THREE.Vector3>>, rotations: {} as Partial<Record<Keys, THREE.Quaternion>> });
 
   useFrame((_, delta) => {
     const g = r.current, s = st.current, p = game.player;
@@ -108,11 +111,10 @@ export default function Hero({ game }: { game: GameState }) {
     const spose = shieldPose.current;
     spose.hiding = !reveal && spose.amount > 0.005;
     spose.amount = THREE.MathUtils.clamp(spose.amount + (reveal ? 1 : -1) * dt / 0.6, 0, 1);
-    shield.visible = spose.amount > 0;
-    const unfold = easeOut(spose.amount);
-    shield.scale.setScalar(unfold);
-    shield.rotation.y = (1 - unfold) * -1.3;
-    shield.position.x = 0.17 - (1 - unfold) * 0.18;
+    // Gear keeps its full size and travels between the back and the hand.
+    shield.visible = true;
+    shield.scale.setScalar(1);
+    swordPose.current.amount = THREE.MathUtils.clamp(swordPose.current.amount + (p.sword > 0 ? 1 : -1) * dt / HERO_MOTION.gearSeconds, 0, 1);
     root.userData['shieldAmount'] = spose.amount;
 
     // --- velocity from motion ---
@@ -140,15 +142,10 @@ export default function Hero({ game }: { game: GameState }) {
     const landDip = Math.sin(s.land * Math.PI) * 0.45 * s.landK;
 
     const P = attackPose(p.move.kind, p.move.t, p.vy);
-    g.blade.visible = p.sword > 0 || P !== null;
-    if (g.sheath) g.sheath.visible = !g.blade.visible;
-
+    g.blade.visible = true;
     root.position.set(p.x, p.y, p.z);
     root.rotation.y = p.rot + (P?.spinY ?? 0);
-    // ragdoll tumble / get-up: whole body rotates; lying flat then pushing up
-    if (p.ragdoll) { /* posed from the jointed ragdoll below */ }
-    else if (p.move.kind === 'getup') { const u = Math.min(1, p.move.t / COMBAT.durations.getup!); const lie = -Math.PI / 2; s.roll = lerp(lie, 0, easeInOut(u)); root.rotation.x = s.roll; root.position.y += Math.sin(u * Math.PI) * 0.3 + (1 - u) * 0.3; }
-    else root.rotation.x = 0;
+    if (!p.ragdoll) root.rotation.x = 0;
     if (!p.ragdoll) { root.rotation.z = 0; for (const j of [g.elL, g.elR, g.hipL, g.hipR, g.kneeL, g.kneeR, g.ankleL, g.ankleR]) if (j) { j.rotation.y = 0; j.rotation.z = 0; } }
 
     // --- terrain under each foot (relative to body ground) ---
@@ -191,7 +188,8 @@ export default function Hero({ game }: { game: GameState }) {
     const breathe = !moving ? Math.sin(s.t * 2.2) * 0.012 : 0;
     const guardCrouch = (p.blocking ? 0.14 : 0) + (P?.crouch ?? 0);
     const targetPelvis = Math.min(0, lowest) - landDip - guardCrouch - bob - s.pivot * 0.07 + breathe - (moving ? 0.05 * run : 0.03);
-    s.pelvis = damp(s.pelvis, targetPelvis, 16, dt);
+    const easedPelvis = damp(s.pelvis, targetPelvis, 16, dt);
+    s.pelvis = groundedOffset(s.pelvis, easedPelvis, dt, p.grounded && !p.swimming && !p.climbing && !p.ragdoll && p.move.kind === 'none' && Math.hypot(p.kx, p.kz) < 0.5);
     pelvis.position.y = HIP_Y + s.pelvis;
 
     const applyLeg = (hip: G, knee: G, ankle: G, t: { fz: number; up: number }, foot: number, side: 1 | -1) => {
@@ -227,8 +225,10 @@ export default function Hero({ game }: { game: GameState }) {
     else if (p.swimming) { lx = -1.2 + Math.sin(s.t * 6) * 0.9; lz = 0.6; le = -0.4; }
     else if (p.climbing) { lx = -2.6 + Math.sin(s.t * 6) * 0.4; lz = 0.1; le = -0.6; }
     else if (!moving) { lx = 0.05 + breathe * 3; lz = 0.12; le = -0.25; }
-    if (spose.hiding) { lx = -0.85; ly = -0.65; lz = 0.25; le = -1.65; }
-    else if (reveal && spose.amount < 1) { lx = -1; ly = 0.3; le = -1.2; }
+    if (!p.blocking && spose.amount > 0 && spose.amount < 1) {
+      const reach = Math.sin(spose.amount * Math.PI);
+      lx = lerp(lx, -2.8, reach); ly = lerp(ly, -0.8, reach); le = lerp(le, -1.7, reach);
+    }
     shL.rotation.set(damp(shL.rotation.x, lx, 14, dt), damp(shL.rotation.y, ly, 14, dt), damp(shL.rotation.z, lz, 14, dt));
     elL.rotation.x = damp(elL.rotation.x, le, 14, dt);
     // right arm (sword)
@@ -244,11 +244,16 @@ export default function Hero({ game }: { game: GameState }) {
       else if (p.swimming) { rx = -1.2 + Math.sin(s.t * 6 + Math.PI) * 0.9; rz = -0.6; re = -0.4; }
       else if (p.climbing) { rx = -2.6 + Math.sin(s.t * 6 + Math.PI) * 0.4; rz = -0.1; re = -0.6; }
       else if (!moving) { rx = 0.05 - breathe * 3; rz = -0.14; re = -0.3; }
+      if (swordPose.current.amount > 0 && swordPose.current.amount < 1) {
+        const reach = Math.sin(swordPose.current.amount * Math.PI);
+        rx = lerp(rx, -2.9, reach); ry = -0.4 * reach; re = lerp(re, -1.6, reach);
+      }
       shR.rotation.set(damp(shR.rotation.x, rx, 14, dt), damp(shR.rotation.y, ry, 14, dt), damp(shR.rotation.z, rz, 14, dt));
       elR.rotation.x = damp(elR.rotation.x, re, 14, dt);
     }
     // blade points forward during swing, rests angled down/back otherwise
-    blade.rotation.x = damp(blade.rotation.x, P ? P.bx : p.blocking ? 1.2 : 0.9, P ? 30 : 10, dt);
+    const swordGrip = g.swordGrip;
+    if (swordGrip) swordGrip.rotation.x = damp(swordGrip.rotation.x, P ? P.bx : p.blocking ? 1.2 : 0.9, P ? 30 : 10, dt);
 
     // --- tunic flaps follow thighs and velocity ---
     const hipAvg = (hipL.rotation.x + hipR.rotation.x) / 2;
@@ -259,6 +264,46 @@ export default function Hero({ game }: { game: GameState }) {
 
     // --- jointed ragdoll overrides every joint from the simulated body parts ---
     if (p.ragdoll && p.rag) poseFromRagdoll(p.rag, g);
+    // Capture the final simulated pose, then blend out of it through articulated support poses.
+    const rec = recovery.current;
+    if (p.ragdoll) {
+      rec.active = false;
+      for (const k of Object.keys(g) as Keys[]) {
+        const joint = g[k];
+        if (!joint || ['blade', 'shield', 'sheath', 'swordGrip', 'shieldGrip'].includes(k)) continue;
+        (rec.positions[k] ??= new THREE.Vector3()).copy(joint.position);
+        (rec.rotations[k] ??= new THREE.Quaternion()).copy(joint.quaternion);
+      }
+    } else if (p.move.kind === 'getup') {
+      rec.active = true;
+      const u = Math.min(1, p.move.t / COMBAT.durations.getup);
+      const push = smooth(seg(u, 0.12, 0.55)), stand = smooth(seg(u, 0.48, 1));
+      // Palm support → chest push-off → one knee underneath → balanced crouch and stand.
+      pelvis.position.y = lerp(0.42, HIP_Y, stand);
+      pelvis.rotation.set(0, 0, 0);
+      spine.rotation.set(lerp(1.15, 0, push) + (1 - stand) * 0.28, 0, 0);
+      head.rotation.set(-0.35 * (1 - stand), 0, 0);
+      shL.rotation.set(-0.55 * (1 - stand), 0, 0.28 * (1 - stand));
+      shR.rotation.set(-0.65 * (1 - stand), 0, -0.28 * (1 - stand));
+      elL.rotation.x = elR.rotation.x = lerp(-1.2, -0.25, push);
+      hipL.rotation.x = -1.05 * (1 - stand); hipR.rotation.x = -1.8 * (1 - stand);
+      if (g.kneeL) g.kneeL.rotation.x = 1.7 * (1 - stand);
+      if (g.kneeR) g.kneeR.rotation.x = 2.15 * (1 - stand);
+      root.position.y = p.y;
+      const blend = smooth(seg(u, 0, 0.28));
+      for (const k of Object.keys(rec.positions) as Keys[]) {
+        const joint = g[k], pos = rec.positions[k], q = rec.rotations[k];
+        if (!joint || !pos || !q) continue;
+        joint.position.lerpVectors(pos, joint.position.clone(), blend);
+        joint.quaternion.slerpQuaternions(q, joint.quaternion.clone(), blend);
+      }
+    } else if (rec.active) { rec.active = false; p.rag = null; }
+    const volumes: ClothCapsule[] = [];
+    placeGear(blade, g.swordGrip, spine, swordPose.current.amount, false, volumes);
+    placeGear(shield, g.shieldGrip, spine, spose.amount, true, volumes);
+    spine.userData['gearVolumes'] = volumes;
+    spine.userData['gearMotion'] = Math.sin(swordPose.current.amount * Math.PI) + Math.sin(spose.amount * Math.PI);
+
   });
 
   const leg = (side: 1 | -1) => (
@@ -286,12 +331,7 @@ export default function Hero({ game }: { game: GameState }) {
         <group position={[0, -FOREARM - 0.06, 0]}>
           <Hand side={-1} />
           {/* sword gripped in the fist */}
-          <group ref={set("blade")}>
-            <Box s={[0.05, 0.05, 0.22]} p={[0, 0, -0.02]} m={M.belt} />
-            <Box s={[0.36, 0.06, 0.06]} p={[0, 0, 0.12]} m={M.gold} />
-            <Box s={[0.05, 0.12, 1.25]} p={[0, 0, 0.78]} m={M.metal} />
-            <mesh position={[0, 0, 1.46]} rotation-x={Math.PI / 2} material={M.metal} castShadow><coneGeometry args={[0.07, 0.16, 4]} /></mesh>
-          </group>
+          <group ref={set("swordGrip")} />
         </group>
       </group>
     </group>
@@ -306,10 +346,7 @@ export default function Hero({ game }: { game: GameState }) {
         <Limb length={FOREARM} forearm />
         <group position={[0, -FOREARM - 0.05, 0]}><Hand side={1} /></group>
         {/* shield strapped to the forearm */}
-        <group ref={set('shield')} name="hero-shield" visible={false} scale={0} position={[0.17, -FOREARM * 0.55, 0]}>
-          <mesh rotation-z={Math.PI / 2} material={M.shield} castShadow><cylinderGeometry args={[0.36, 0.36, 0.06, 7]} /></mesh>
-          <mesh position-x={0.045} rotation-z={Math.PI / 2} material={M.metal} castShadow><cylinderGeometry args={[0.1, 0.1, 0.05, 6]} /></mesh>
-        </group>
+        <group ref={set('shieldGrip')} position={[0.17, -FOREARM * 0.55, 0]} />
       </group>
     </group>
   );
@@ -331,12 +368,18 @@ export default function Hero({ game }: { game: GameState }) {
           <mesh position-y={0.3} material={M.tunic} castShadow><cylinderGeometry args={[0.36, 0.28, 0.62, 6]} /></mesh>
           <Box s={[0.66, 0.16, 0.36]} p={[0, 0.6, 0]} m={M.tunic} />
           <Box s={[0.08, 0.7, 0.04]} p={[0.1, 0.32, 0.27]} r={[0, 0, 0.6]} m={M.belt} />
-          {/* sheath on the back */}
-          <Box s={[0.1, 0.9, 0.14]} p={[0.05, 0.35, -0.3]} r={[0, 0, 0.7]} m={M.belt} />
-          <group ref={set("sheath")} position={[0.05, 0.35, -0.32]} rotation-z={0.7}>
-            <Box s={[0.05, 0.22, 0.05]} p={[0, 0.56, 0]} m={M.belt} />
-            <Box s={[0.36, 0.06, 0.06]} p={[0, 0.45, 0]} m={M.gold} />
+          {/* Permanent scabbard; one full-size sword travels into and out of it. */}
+          <Box s={[0.14, 1.4, 0.18]} p={[0.16, 0.24, -0.32]} r={[0, 0, 0.7]} m={M.belt} />
+          <group ref={set("blade")} name="hero-sword">
+            <Box s={[0.05, 0.05, 0.22]} p={[0, 0, -0.02]} m={M.belt} />
+            <Box s={[0.36, 0.06, 0.06]} p={[0, 0, 0.12]} m={M.gold} />
+            <Box s={[0.05, 0.12, 1.25]} p={[0, 0, 0.78]} m={M.metal} />
+            <mesh position={[0, 0, 1.46]} rotation-x={Math.PI / 2} material={M.metal} castShadow><coneGeometry args={[0.07, 0.16, 4]} /></mesh>
           </group>
+        <group ref={set('shield')} name="hero-shield" >
+          <mesh rotation-z={Math.PI / 2} material={M.shield} castShadow><cylinderGeometry args={[0.36, 0.36, 0.06, 7]} /></mesh>
+          <mesh position-x={0.045} rotation-z={Math.PI / 2} material={M.metal} castShadow><cylinderGeometry args={[0.1, 0.1, 0.05, 6]} /></mesh>
+        </group>
           <mesh position-y={0.74} material={HERO_FABRIC.shadow} castShadow><cylinderGeometry args={[0.09, 0.11, 0.16, 6]} /></mesh>
           {armR}{armL}
           <group ref={set("head")} position-y={0.86}>
@@ -366,8 +409,9 @@ function frame(r: Ragdoll, base: Part, up: Part, left: Part, right: Part, out: T
 }
 /** Points a joint group's local -Y at a child part, minimal twist relative to its parent. */
 function aim(obj: THREE.Object3D, r: Ragdoll, from: Part, to: Part) {
-  obj.parent!.updateWorldMatrix(true, false);
-  obj.parent!.getWorldQuaternion(_pq).invert();
+  const parent = obj.parent; if (!parent) return;
+  parent.updateWorldMatrix(true, false);
+  parent.getWorldQuaternion(_pq).invert();
   const d = vec(r, to, _a).sub(vec(r, from, _v)).normalize().applyQuaternion(_pq);
   obj.quaternion.setFromUnitVectors(DOWN, d);
 }
@@ -424,5 +468,25 @@ function attackPose(kind: string, t: number, vy: number): Pose | null {
     case 'thrustEnd': { const k = easeInOut(seg(u, 0, 1)); // straightening out of the lean
       return { ...base, rx: lerp(-1.5, base.rx, k), re: lerp(0, base.re, k), bx: lerp(1.45, 0.9, k), lean: 0.6 * (1 - k), crouch: 0.2 * (1 - k), twist: -0.25 * (1 - k), lx: lerp(0.9, 0.2, k), heave: Math.sin(t * 6) * 0.06 * (1 - k) }; }
     default: return null;
+  }
+}
+
+const gearTarget = new THREE.Vector3(), gearQuat = new THREE.Quaternion(), gearParentQuat = new THREE.Quaternion();
+const swordBack = new THREE.Vector3(-0.30, 0.78, -0.32), shieldBack = new THREE.Vector3(0.22, 0.28, -0.43);
+const swordBackQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0.7, 'ZYX'));
+const shieldBackQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
+function placeGear(gear: THREE.Group, grip: G, spine: THREE.Group, amount: number, isShield: boolean, volumes: ClothCapsule[]) {
+  if (!grip) return;
+  spine.updateWorldMatrix(true, false); grip.updateWorldMatrix(true, false);
+  grip.getWorldPosition(gearTarget); spine.worldToLocal(gearTarget);
+  grip.getWorldQuaternion(gearQuat); spine.getWorldQuaternion(gearParentQuat).invert(); gearQuat.premultiply(gearParentQuat);
+  const u = smooth(amount), arc = Math.sin(amount * Math.PI);
+  gear.position.copy(isShield ? shieldBack : swordBack).lerp(gearTarget, u);
+  gear.position.y += arc * (isShield ? 0.65 : 1.0);
+  gear.position.z -= arc * 0.45;
+  gear.quaternion.copy(isShield ? shieldBackQ : swordBackQ).slerp(gearQuat, u);
+  if (amount < 0.98) {
+    const end = new THREE.Vector3(isShield ? 0 : 0, 0, isShield ? 0 : 1.5).applyQuaternion(gear.quaternion).add(gear.position);
+    volumes.push({ ax: gear.position.x, ay: gear.position.y, az: gear.position.z, bx: end.x, by: end.y, bz: end.z, radius: isShield ? 0.41 : 0.12 });
   }
 }
