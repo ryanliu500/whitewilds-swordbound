@@ -70,6 +70,24 @@ function Hand({ side }: { side: number }) {
   </group>;
 }
 
+/** Render-only aim: camera pitch set by the stepper each frame (radians, + = looking up). */
+export const heroAim = { pitch: 0 };
+
+/** Sculpted lathe leg segments (thigh / shin / boot) that match the arm limbs. */
+function LegSeg({ length, kind }: { length: number; kind: 'thigh' | 'shin' | 'boot' }) {
+  const geometry = useMemo(() => {
+    const pts = kind === 'thigh'
+      ? [[0, 0], [0.1, 0.02], [0.112, length * 0.35], [0.13, length * 0.75], [0.125, length * 0.92], [0.09, length], [0, length]]
+      : kind === 'shin'
+      ? [[0, 0], [0.085, 0.01], [0.1, length * 0.3], [0.108, length * 0.7], [0.095, length], [0, length]]
+      : [[0, 0], [0.105, 0.01], [0.112, length * 0.5], [0.12, length * 0.9], [0.11, length], [0, length]];
+    const g = new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x ?? 0, y ?? 0)), 12);
+    g.translate(0, -length, 0); g.scale(1, 1, 0.92);
+    return g;
+  }, [length, kind]);
+  return <mesh geometry={geometry} material={kind === 'boot' ? M.boot : M.pants} castShadow receiveShadow />;
+}
+
 export default function Hero({ game }: { game: GameState }) {
   const r = useRef({} as Record<Keys, THREE.Group>);
   const set = (k: Keys) => (o: THREE.Group | null) => { if (o) r.current[k] = o; };
@@ -93,7 +111,7 @@ export default function Hero({ game }: { game: GameState }) {
     const unfold = easeOut(spose.amount);
     shield.scale.setScalar(unfold);
     shield.rotation.y = (1 - unfold) * -1.3;
-    shield.position.x = 0.12 - (1 - unfold) * 0.18;
+    shield.position.x = 0.17 - (1 - unfold) * 0.18;
     root.userData['shieldAmount'] = spose.amount;
 
     // --- velocity from motion ---
@@ -152,6 +170,7 @@ export default function Hero({ game }: { game: GameState }) {
       let fz = Math.sin(ph) * stride;
       let up = Math.max(0, Math.cos(ph)) * lift;
       if (!moving && p.grounded) fz = side * 0.05; // relaxed stagger at idle
+      if (p.blocking && p.grounded) fz = (moving ? fz * 0.4 : 0) + side * 0.32; // bladed brace: left foot forward, right back
       if (!p.grounded && !p.swimming && !p.climbing) { // airborne tuck
         const rising = p.vy > 0 ? 1 : 0.5;
         up = side === 1 ? 0.55 * rising : 0.3 * rising; fz = side === 1 ? 0.25 : -0.15;
@@ -168,7 +187,7 @@ export default function Hero({ game }: { game: GameState }) {
     const lowest = Math.min(s.footL, s.footR);
     const bob = moving && p.grounded ? Math.abs(Math.cos(s.phase)) * 0.06 * (0.5 + run) : 0;
     const breathe = !moving ? Math.sin(s.t * 2.2) * 0.012 : 0;
-    const guardCrouch = (p.blocking ? 0.3 : 0) + (P?.crouch ?? 0);
+    const guardCrouch = (p.blocking ? 0.14 : 0) + (P?.crouch ?? 0);
     const targetPelvis = Math.min(0, lowest) - landDip - guardCrouch - bob - s.pivot * 0.07 + breathe - (moving ? 0.05 * run : 0.03);
     s.pelvis = damp(s.pelvis, targetPelvis, 16, dt);
     pelvis.position.y = HIP_Y + s.pelvis;
@@ -200,7 +219,7 @@ export default function Hero({ game }: { game: GameState }) {
     // left arm (shield)
     let lx = -armSwing, lz = 0.18, le = -0.35 - run * 0.6, ly = 0;
     if (p.ragdoll) { lx = -2.2 + Math.sin(s.t * 9) * 0.5; lz = 1.2; le = -0.4; }
-    else if (p.blocking) { lx = -1.25; ly = 0.9; lz = 0.35; le = -1.45; } // Link guard: forearm across the chest, shield face forward
+    else if (p.blocking) { lx = -0.55; ly = -1.0; lz = 0.12; le = -1.55; } // tucked elbow, forearm folded inward across the stomach; outer forearm (shield) faces forward
     else if (P) { lx = P.lx; lz = 0.35; le = -0.6; }
     else if (!p.grounded && !p.swimming && !p.climbing) { lx = -0.4; lz = 0.9; le = -0.3; }
     else if (p.swimming) { lx = -1.2 + Math.sin(s.t * 6) * 0.9; lz = 0.6; le = -0.4; }
@@ -239,13 +258,13 @@ export default function Hero({ game }: { game: GameState }) {
 
   const leg = (side: 1 | -1) => (
     <group ref={set(side === 1 ? "hipL" : "hipR")} position={[side * HIP_X, 0, 0]}>
-      <Box s={[0.24, THIGH, 0.26]} p={[0, -THIGH / 2, 0]} m={M.pants} />
+      <LegSeg length={THIGH} kind="thigh" />
       <group ref={set(side === 1 ? "kneeL" : "kneeR")} position={[0, -THIGH, 0]}>
-        <Box s={[0.2, 0.14, 0.2]} p={[0, 0, 0.02]} m={M.pants} />
-        <Box s={[0.21, SHIN * 0.55, 0.23]} p={[0, -SHIN * 0.3, 0]} m={M.pants} />
-        <Box s={[0.23, SHIN * 0.5, 0.25]} p={[0, -SHIN * 0.75, 0]} m={M.boot} />
+        <mesh scale={[0.1, 0.1, 0.105]} position-z={0.015} material={M.pants} castShadow><sphereGeometry args={[1, 12, 8]} /></mesh>
+        <LegSeg length={SHIN * 0.5} kind="shin" />
+        <group position-y={-SHIN * 0.48}><LegSeg length={SHIN * 0.52} kind="boot" /></group>
         <group ref={set(side === 1 ? "ankleL" : "ankleR")} position={[0, -SHIN, 0]}>
-          <Box s={[0.24, FOOT_H, 0.42]} p={[0, -FOOT_H / 2, 0.08]} m={M.boot} />
+          <mesh position={[0, -FOOT_H / 2, 0.08]} scale={[0.12, FOOT_H / 2, 0.22]} material={M.boot} castShadow receiveShadow><sphereGeometry args={[1, 12, 8]} /></mesh>
         </group>
       </group>
     </group>
@@ -282,9 +301,9 @@ export default function Hero({ game }: { game: GameState }) {
         <Limb length={FOREARM} forearm />
         <group position={[0, -FOREARM - 0.05, 0]}><Hand side={1} /></group>
         {/* shield strapped to the forearm */}
-        <group ref={set('shield')} name="hero-shield" visible={false} scale={0} position={[0.16, -FOREARM * 0.55, 0.02]} rotation-z={Math.PI / 2}>
-          <mesh rotation-x={Math.PI / 2} material={M.shield} castShadow><cylinderGeometry args={[0.38, 0.38, 0.06, 7]} /></mesh>
-          <mesh position-y={0.04} rotation-x={Math.PI / 2} material={M.metal} castShadow><cylinderGeometry args={[0.1, 0.1, 0.05, 6]} /></mesh>
+        <group ref={set('shield')} name="hero-shield" visible={false} scale={0} position={[0.17, -FOREARM * 0.55, 0]}>
+          <mesh rotation-z={Math.PI / 2} material={M.shield} castShadow><cylinderGeometry args={[0.36, 0.36, 0.06, 7]} /></mesh>
+          <mesh position-x={0.045} rotation-z={Math.PI / 2} material={M.metal} castShadow><cylinderGeometry args={[0.1, 0.1, 0.05, 6]} /></mesh>
         </group>
       </group>
     </group>
@@ -341,16 +360,16 @@ function attackPose(kind: string, t: number, vy: number): Pose | null {
   const d = COMBAT.durations[kind] ?? 1, u = t / d;
   const base: Pose = { rx: -0.3, ry: 0, rz: -0.2, re: -0.4, bx: 0, twist: 0, lean: 0, crouch: 0, spinY: 0, lx: 0.4, heave: 0 };
   const settle = 1 - easeInOut(seg(u, 0.6, 1)); // follow-through eases back to idle
-  const mix = (a: Pose, w: number): Pose => ({ ...a, rx: lerp(base.rx, a.rx, w), rz: lerp(base.rz, a.rz, w), re: lerp(base.re, a.re, w), twist: a.twist * w, lean: a.lean * w, crouch: a.crouch * w });
+  const mix = (a: Pose, w: number): Pose => ({ ...a, bx: lerp(base.bx, a.bx, w), rx: lerp(base.rx, a.rx, w), rz: lerp(base.rz, a.rz, w), re: lerp(base.re, a.re, w), twist: a.twist * w, lean: a.lean * w, crouch: a.crouch * w });
   switch (kind) {
     case 'slash1': { const k = easeInOut(seg(u, 0.12, 0.55)); // right → left horizontal crescent
-      return mix({ ...base, rx: -1.45, rz: lerp(-1.6, 1.4, k), re: -0.15, twist: lerp(0.9, -1.1, k), lean: 0.18, crouch: 0.12, lx: 0.6 }, Math.max(seg(u, 0, 0.12), settle)); }
+      return mix({ ...base, rx: -1.45, rz: lerp(-1.6, 1.4, k), re: -0.15, bx: 1.35, twist: lerp(0.9, -1.1, k), lean: 0.18, crouch: 0.12, lx: 0.6 }, Math.max(seg(u, 0, 0.12), settle)); }
     case 'slash2': { const k = easeInOut(seg(u, 0.12, 0.55)); // low-left → high-right backhand
-      return mix({ ...base, rx: lerp(-0.7, -2.4, k), rz: lerp(1.3, -1.5, k), re: -0.2, twist: lerp(-1.0, 1.0, k), lean: 0.12, crouch: 0.1, lx: 0.8 }, Math.max(seg(u, 0, 0.12), settle)); }
+      return mix({ ...base, rx: lerp(-0.7, -2.4, k), rz: lerp(1.3, -1.5, k), re: -0.2, bx: 1.35, twist: lerp(-1.0, 1.0, k), lean: 0.12, crouch: 0.1, lx: 0.8 }, Math.max(seg(u, 0, 0.12), settle)); }
     case 'slash3': { const k = easeInOut(seg(u, 0.2, 0.55)); // overhead cleave with deep knee bend
       return mix({ ...base, rx: lerp(-3.1, -0.35, k), rz: -0.1, re: lerp(-0.5, -0.05, k), twist: 0.1, lean: lerp(-0.3, 0.55, k), crouch: lerp(0, 0.38, k), lx: 0.3 }, Math.max(seg(u, 0, 0.2), settle)); }
     case 'spin': { const k = easeInOut(seg(u, 0.22, 0.8)); // 360° whirl finisher
-      return { ...mix({ ...base, rx: -1.55, rz: -1.55, re: -0.05, twist: lerp(1.1, 0, k), lean: 0.1, crouch: 0.2 * Math.sin(u * Math.PI) }, Math.max(seg(u, 0, 0.22), settle)), spinY: k * Math.PI * 2 };
+      return { ...mix({ ...base, rx: -1.55, rz: -1.55, re: -0.05, bx: 1.5, twist: lerp(1.1, 0, k), lean: 0.1, crouch: 0.2 * Math.sin(u * Math.PI) }, Math.max(seg(u, 0, 0.22), settle)), spinY: k * Math.PI * 2 };
     }
     case 'jump': return { ...base, rx: vy > 0 ? -3.0 : -2.7, rz: -0.15, re: -0.6, lean: vy > 0 ? -0.35 : 0.1, crouch: 0, lx: -0.6 };
     case 'jumpLand': { const k = easeOut(seg(u, 0, 0.18)); const rec = settle; // slam, then committed recovery
@@ -358,7 +377,7 @@ function attackPose(kind: string, t: number, vy: number): Pose | null {
     case 'thrustWind': { const k = easeInOut(seg(u, 0, 1)); // drawing the blade back while sprinting
       return { ...base, rx: lerp(-0.2, 0.75, k), rz: -0.35, re: lerp(-0.4, -1.7, k), bx: lerp(0.9, 1.45, k), lean: 0.4 * k, crouch: 0.12 * k, twist: 0.45 * k, lx: 0.5 }; }
     case 'thrust': { const tired = seg(t, COMBAT.thrustDecel, COMBAT.thrustDecel + COMBAT.thrustFatigue); // forward lunge, then heaving
-      return { ...base, rx: -1.5 + tired * 0.35, rz: -0.05, re: 0, bx: 1.45, lean: 0.6 - tired * 0.15, crouch: 0.18 + tired * 0.12, twist: -0.25, lx: 0.9, heave: Math.sin(t * 7) * 0.09 * tired }; }
+      return { ...base, rx: -1.5 + tired * 0.35 - heroAim.pitch, rz: -0.05, re: 0, bx: 1.45, lean: 0.6 - tired * 0.15, crouch: 0.18 + tired * 0.12, twist: -0.25, lx: 0.9, heave: Math.sin(t * 7) * 0.09 * tired }; }
     case 'thrustEnd': { const k = easeInOut(seg(u, 0, 1)); // straightening out of the lean
       return { ...base, rx: lerp(-1.5, base.rx, k), re: lerp(0, base.re, k), bx: lerp(1.45, 0.9, k), lean: 0.6 * (1 - k), crouch: 0.2 * (1 - k), twist: -0.25 * (1 - k), lx: lerp(0.9, 0.2, k), heave: Math.sin(t * 6) * 0.06 * (1 - k) }; }
     default: return null;
