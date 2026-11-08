@@ -5,6 +5,7 @@ import { heightAt } from "./sim/world";
 import { angleDifference } from "./sim/locomotion";
 import type { GameState } from "./sim/game";
 import { COMBAT } from "./sim/combat";
+import { partPos, type Part, type Ragdoll } from "./sim/ragdoll";
 import { FlowingCloak, Hood, HERO_FABRIC } from './HeroGarments';
 
 /**
@@ -145,9 +146,10 @@ export default function Hero({ game }: { game: GameState }) {
     root.position.set(p.x, p.y, p.z);
     root.rotation.y = p.rot + (P?.spinY ?? 0);
     // ragdoll tumble / get-up: whole body rotates; lying flat then pushing up
-    if (p.ragdoll) { s.roll = -p.tumble; root.rotation.x = s.roll; root.position.y += 0.4; }
+    if (p.ragdoll) { /* posed from the jointed ragdoll below */ }
     else if (p.move.kind === 'getup') { const u = Math.min(1, p.move.t / COMBAT.durations.getup!); const lie = -Math.PI / 2; s.roll = lerp(lie, 0, easeInOut(u)); root.rotation.x = s.roll; root.position.y += Math.sin(u * Math.PI) * 0.3 + (1 - u) * 0.3; }
     else root.rotation.x = 0;
+    if (!p.ragdoll) { root.rotation.z = 0; for (const j of [g.elL, g.elR, g.hipL, g.hipR, g.kneeL, g.kneeR, g.ankleL, g.ankleR]) if (j) { j.rotation.y = 0; j.rotation.z = 0; } }
 
     // --- terrain under each foot (relative to body ground) ---
     const onTerrain = Math.abs(p.y - heightAt(p.x, p.z)) < 0.35 && p.grounded && !p.climbing;
@@ -254,6 +256,9 @@ export default function Hero({ game }: { game: GameState }) {
     flapB.rotation.x = Math.max(0.05, s.speed * 0.02 + (!p.grounded ? 0.5 : 0) + hipAvg * -0.2);
     flapL.rotation.z = -0.08 - (!p.grounded ? 0.3 : 0) - s.speed * 0.004;
     flapR.rotation.z = 0.08 + (!p.grounded ? 0.3 : 0) + s.speed * 0.004;
+
+    // --- jointed ragdoll overrides every joint from the simulated body parts ---
+    if (p.ragdoll && p.rag) poseFromRagdoll(p.rag, g);
   });
 
   const leg = (side: 1 | -1) => (
@@ -347,6 +352,44 @@ export default function Hero({ game }: { game: GameState }) {
       </group>
     </group>
   );
+}
+
+const _v = new THREE.Vector3(), _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(), _q = new THREE.Quaternion(), _pq = new THREE.Quaternion(), _m = new THREE.Matrix4(), DOWN = new THREE.Vector3(0, -1, 0);
+const vec = (r: Ragdoll, n: Part, out: THREE.Vector3) => out.fromArray(partPos(r, n));
+/** World orientation from a body triangle: +x toward `left`, +y toward `up`. */
+function frame(r: Ragdoll, base: Part, up: Part, left: Part, right: Part, out: THREE.Quaternion) {
+  const y = vec(r, up, _a).sub(vec(r, base, _v)).normalize();
+  const x = vec(r, left, _b).sub(vec(r, right, _c));
+  x.addScaledVector(y, -x.dot(y)).normalize();
+  const z = _c.crossVectors(x, y);
+  return out.setFromRotationMatrix(_m.makeBasis(x, y, z));
+}
+/** Points a joint group's local -Y at a child part, minimal twist relative to its parent. */
+function aim(obj: THREE.Object3D, r: Ragdoll, from: Part, to: Part) {
+  obj.parent!.updateWorldMatrix(true, false);
+  obj.parent!.getWorldQuaternion(_pq).invert();
+  const d = vec(r, to, _a).sub(vec(r, from, _v)).normalize().applyQuaternion(_pq);
+  obj.quaternion.setFromUnitVectors(DOWN, d);
+}
+type Joints = Partial<Record<string, THREE.Group | null>>;
+function poseFromRagdoll(r: Ragdoll, g: Joints) {
+  const { root, pelvis, spine, head, shL, elL, shR, elR, hipL, kneeL, ankleL, hipR, kneeR, ankleR } = g;
+  if (!root || !pelvis || !spine || !head || !shL || !elL || !shR || !elR || !hipL || !kneeL || !hipR || !kneeR) return;
+  // lower torso: pelvis frame (hips + spine direction)
+  frame(r, 'pelvis', 'chest', 'hipL', 'hipR', _q);
+  root.quaternion.copy(_q);
+  pelvis.quaternion.identity();
+  root.position.fromArray(partPos(r, 'pelvis')).sub(_v.set(0, pelvis.position.y, 0).applyQuaternion(_q));
+  // upper torso moves separately: chest frame (shoulders + neck)
+  frame(r, 'chest', 'head', 'shL', 'shR', _q);
+  root.updateWorldMatrix(false, false); root.getWorldQuaternion(_pq).invert();
+  spine.quaternion.copy(_pq).multiply(_q);
+  head.quaternion.identity();
+  aim(shL, r, 'shL', 'elL'); aim(elL, r, 'elL', 'haL');
+  aim(shR, r, 'shR', 'elR'); aim(elR, r, 'elR', 'haR');
+  aim(hipL, r, 'hipL', 'knL'); aim(kneeL, r, 'knL', 'ftL');
+  aim(hipR, r, 'hipR', 'knR'); aim(kneeR, r, 'knR', 'ftR');
+  ankleL?.quaternion.identity(); ankleR?.quaternion.identity();
 }
 
 function easeOut(t: number) { return 1 - Math.pow(1 - t, 3); }

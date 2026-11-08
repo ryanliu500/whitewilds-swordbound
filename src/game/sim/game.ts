@@ -1,6 +1,7 @@
 import { updateShield } from './shield';
 import { canFollowGround, turnTowards, walkableSlope } from './locomotion';
 import { COMBAT, chooseAttack, comboIndexOf, isLaunch, isSlash, moveSpeedFactor, thrustSpeed, type MoveKind } from './combat';
+import { createRagdoll, hitRagdoll, partPos, stepRagdoll, type Ragdoll, type V3 } from './ragdoll';
 import { CAMP,CHEST,OBSTACLES,SPAWN,TOWER,WATER_Y,WORLD_R,heightAt,surfaceAt } from './world';
 export const RULES={speed:14,sprint:2.2,jump:12,gravity:28,hopCooldown:.65,hopSpeed:24,health:100,stamina:30};
 export type Enemy={id:number;kind:'guard'|'boss'|'sniper';x:number;y:number;z:number;hp:number;maxHp:number;rot:number;vx:number;vz:number;stun:number;cooldown:number;death:number;impulse:number};
@@ -9,7 +10,7 @@ export type Input={forward:number;strafe:number;yaw:number;sprint:boolean;jump:b
 export const emptyInput=():Input=>({forward:0,strafe:0,yaw:0,sprint:false,jump:false,attack:false,attackHeld:false,guard:false,interact:false,hop:false});
 export type Move={kind:MoveKind;t:number;hits:number[];tick:number};
 const newMove=(kind:MoveKind='none'):Move=>({kind,t:0,hits:[],tick:0});
-function freshPlayer(){return {...SPAWN,vy:0,rot:Math.PI,grounded:true,hp:RULES.health,stamina:RULES.stamina,swimming:false,blocking:false,shieldTime:0,sword:0,move:newMove(),combo:0,comboTimer:0,kx:0,kz:0,ragdoll:false,dead:false,down:0,rest:0,tumble:0,hopCooldown:0,hopTime:0,invulnerable:0,climbing:false};}
+function freshPlayer(){return {...SPAWN,vy:0,rot:Math.PI,grounded:true,hp:RULES.health,stamina:RULES.stamina,swimming:false,blocking:false,shieldTime:0,sword:0,move:newMove(),combo:0,comboTimer:0,kx:0,kz:0,ragdoll:false,dead:false,down:0,rest:0,tumble:0,hopCooldown:0,hopTime:0,invulnerable:0,climbing:false,rag:null as Ragdoll|null};}
 export function createGame(){return {player:freshPlayer(),enemies:[[-15,12,'guard'],[15,6,'guard'],[-20,-13,'guard'],[0,-5,'boss'],[25,-12,'sniper']].map(([x,z,kind],i)=>({id:i,kind,x:CAMP.x+Number(x),z:CAMP.z+Number(z),y:kind==='sniper'?TOWER.y:CAMP.y,hp:kind==='boss'?150:kind==='sniper'?50:75,maxHp:kind==='boss'?150:kind==='sniper'?50:75,rot:0,vx:0,vz:0,stun:0,cooldown:1+i*.4,death:0,impulse:0} as Enemy)),bolts:[] as {x:number;y:number;z:number;vx:number;vy:number;vz:number;life:number}[],boots:false,doorOpen:false,paused:false,time:0,message:'',messageTime:0,deaths:0,gameOver:0,gameOverText:''};}
 export type GameState=ReturnType<typeof createGame>;
 export function say(g:GameState,message:string){g.message=message;g.messageTime=4;}
@@ -22,10 +23,10 @@ const g_over=(p:GameState['player'])=>p.dead;
 function startGameOver(g:GameState,text:string){if(g.gameOver>0)return;g.gameOver=COMBAT.gameOverSeconds;g.gameOverText=text;}
 function respawn(g:GameState){Object.assign(g.player,freshPlayer(),{invulnerable:2});g.deaths++;g.gameOver=0;}
 
-export function startRagdoll(g:GameState,dirX:number,dirZ:number,impulse:number){const p=g.player;p.ragdoll=true;p.down=0;p.rest=0;p.kx=dirX*impulse*1.1;p.kz=dirZ*impulse*1.1;p.vy=Math.max(4,impulse*.55);p.grounded=false;p.climbing=false;p.blocking=false;p.move=newMove();}
+export function startRagdoll(g:GameState,dirX:number,dirZ:number,impulse:number){const p=g.player;p.ragdoll=true;p.down=0;p.rest=0;p.kx=dirX*impulse*1.1;p.kz=dirZ*impulse*1.1;p.vy=Math.max(4,impulse*.55);p.grounded=false;p.climbing=false;p.blocking=false;p.move=newMove();p.rag=createRagdoll(p.x,p.y,p.z,p.rot,[p.kx,p.vy,p.kz]);}
 
 /** impulse ≈ how hard the hit throws you; isLaunch() hits (and all fatal hits) ragdoll, others knock back. */
-export function damagePlayer(g:GameState,damage:number,ex:number,ez:number,impulse=8){const p=g.player;if(p.invulnerable>0||p.ragdoll||p.dead)return;let dx=p.x-ex,dz=p.z-ez;const n=Math.max(.01,Math.hypot(dx,dz));dx/=n;dz/=n;const facing=-(Math.sin(p.rot)*dx+Math.cos(p.rot)*dz)>0.2;
+export function damagePlayer(g:GameState,damage:number,ex:number,ez:number,impulse=8){const p=g.player;if(p.ragdoll&&p.rag){const d=Math.max(.01,Math.hypot(p.x-ex,p.z-ez));hitRagdoll(p.rag,ex,p.y+1.5,ez,[(p.x-ex)/d*impulse,impulse*.3,(p.z-ez)/d*impulse]);return;}if(p.invulnerable>0||p.ragdoll||p.dead)return;let dx=p.x-ex,dz=p.z-ez;const n=Math.max(.01,Math.hypot(dx,dz));dx/=n;dz/=n;const facing=-(Math.sin(p.rot)*dx+Math.cos(p.rot)*dz)>0.2;
   if(p.blocking&&facing){p.kx=dx*impulse*.35;p.kz=dz*impulse*.35;p.shieldTime=COMBAT.shieldStow;say(g,'Blocked');return;}
   p.hp=Math.max(0,p.hp-damage);p.invulnerable=.65;
   if(p.hp===0){p.dead=true;startRagdoll(g,dx,dz,Math.max(impulse,9));return;}
@@ -47,20 +48,25 @@ function updateMove(g:GameState,i:Input,dt:number,sprinting:boolean){const p=g.p
   if(m.kind==='thrust'){m.tick-=dt;if(m.tick<=0){m.hits=[];m.tick=COMBAT.thrustTick;}strike(g,5.5,.5,D.thrust!,10);if(!i.attackHeld||!i.sprint){p.move=newMove('thrustEnd');}return;}
   if(m.t>=dur){if(isSlash(m.kind))p.comboTimer=COMBAT.comboWindow;p.move=newMove();}}
 
-function updateRagdoll(g:GameState,dt:number){const p=g.player;p.down+=dt;p.vy-=RULES.gravity*dt;move(g,p.x+p.kx*dt,p.z+p.kz*dt);p.y+=p.vy*dt;const ground=surfaceAt(p.x,p.z,p.y);let onGround=false;
-  if(p.y<=ground){p.y=ground;onGround=true;p.vy=p.vy<-4?-p.vy*.3:0;const f=Math.exp(-3.5*dt);p.kx*=f;p.kz*=f;}
-  if(ground<WATER_Y-1.5&&p.y<WATER_Y){p.y=WATER_Y-1.6;p.vy=0;p.kx*=.9;p.kz*=.9;onGround=true;}
-  const speed=Math.hypot(p.kx,p.kz,p.vy);p.tumble+=Math.hypot(p.kx,p.kz)*dt*1.4;
-  p.rest=onGround&&speed<.8?p.rest+dt:0;
-  const settled=p.rest>.5||p.down>=COMBAT.ragdollWatchdog;
+function ragdollWorld(g:GameState){return {ground:(x:number,z:number,y:number)=>{const s=surfaceAt(x,z,y);return s<WATER_Y-1.5?Math.max(s,WATER_Y-1.6):s;},
+  push:(q:V3,r:number)=>{for(const o of OBSTACLES){if(o.door&&g.doorOpen)continue;if(q[1]>o.y+o.h+r||q[1]<o.y-r)continue;const ox=Math.abs(q[0]-o.x)-o.hx-r,oz=Math.abs(q[2]-o.z)-o.hz-r;if(ox<0&&oz<0){if(ox>oz)q[0]=o.x+Math.sign(q[0]-o.x)*(o.hx+r);else q[2]=o.z+Math.sign(q[2]-o.z)*(o.hz+r);}}
+    for(const e of g.enemies){if(e.hp<=0||q[1]<e.y-r||q[1]>e.y+2.6+r)continue;const dx=q[0]-e.x,dz=q[2]-e.z,d=Math.hypot(dx,dz),R=.9+r;if(d<R&&d>1e-4){q[0]=e.x+dx/d*R;q[2]=e.z+dz/d*R;}}}};}
+
+/** Jointed ragdoll until every part comes to rest (or the 6s watchdog), then get up — or game over if dead. */
+function updateRagdoll(g:GameState,dt:number){const p=g.player;p.down+=dt;
+  if(!p.rag)p.rag=createRagdoll(p.x,p.y,p.z,p.rot,[p.kx,p.vy,p.kz]);
+  stepRagdoll(p.rag,ragdollWorld(g),dt);
+  const pel=partPos(p.rag,'pelvis'),ch=partPos(p.rag,'chest');p.x=pel[0];p.z=pel[2];p.y=Math.max(surfaceAt(p.x,p.z,pel[1]),pel[1]-1.36);
+  p.tumble=Math.atan2(Math.hypot(ch[0]-pel[0],ch[2]-pel[2]),ch[1]-pel[1]);p.rest=p.rag.still;
+  const settled=p.rag.still>.5||p.down>=COMBAT.ragdollWatchdog;
   if(!settled)return;
   if(p.dead){startGameOver(g,'Felled in battle. The shadows claim you.');return;}
-  p.ragdoll=false;p.kx=p.kz=0;p.grounded=true;p.move=newMove('getup');p.invulnerable=1.6;}
+  p.ragdoll=false;p.rag=null;p.y=surfaceAt(p.x,p.z,p.y+1);p.vy=0;p.kx=p.kz=0;p.grounded=true;p.move=newMove('getup');p.invulnerable=1.6;}
 
 export function interact(g:GameState){const p=g.player;if(Math.hypot(p.x-CHEST.x,p.z-CHEST.z)<6){if(!g.doorOpen){say(g,'The seal holds. Defeat the fortress guardian.');return;}if(!g.boots){g.boots=true;say(g,'Winged Boots acquired · The wind will carry you forward.');}}}
 
 export function step(g:GameState,i:Input,delta:number){if(g.paused)return;const dt=Math.min(delta,.05),p=g.player;g.time+=dt;g.messageTime=Math.max(0,g.messageTime-dt);
-  if(g.gameOver>0){g.gameOver-=dt;if(p.ragdoll&&!p.swimming)updateRagdoll(g,dt);if(g.gameOver<=0)respawn(g);return;}
+  if(g.gameOver>0){g.gameOver-=dt;if(g.gameOver<=0){respawn(g);return;}if(p.ragdoll&&!p.swimming)updateRagdoll(g,dt);return;}
   for(const k of ['hopCooldown','hopTime','invulnerable','comboTimer'] as const)p[k]=Math.max(0,p[k]-dt);
   if(p.comboTimer===0&&p.move.kind==='none')p.combo=0;
   if(p.ragdoll){updateRagdoll(g,dt);updateEnemies(g,dt);return;}
