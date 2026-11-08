@@ -11,7 +11,7 @@ const RULES_GAMEOVER = COMBAT.gameOverSeconds;
 import WorldScene from "./WorldScene";
 import Camp from "./Camp";
 import Enemies from "./Enemies";
-import Hero from "./Hero";
+import Hero, { heroAim } from "./Hero";
 import { PALETTE } from "./Models";
 
 const game: GameState = createGame();
@@ -89,6 +89,7 @@ function Stepper({ paused, onTick }: { paused: boolean; onTick: () => void }) {
     i.jump = pressed.jump; i.attack = pressed.attack; i.interact = pressed.interact;
     i.hop = pressed.hop || (pressed.jump && !game.player.grounded);
     pressed.jump = pressed.attack = pressed.interact = pressed.hop = false;
+    heroAim.pitch = THREE.MathUtils.clamp((0.35 - c.pitch) * 1.4, -0.7, 0.9);
     step(game, i, d);
     const p = game.player;
     const t = new THREE.Vector3(p.x, p.y + 2, p.z);
