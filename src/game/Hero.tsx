@@ -146,9 +146,10 @@ export default function Hero({ game }: { game: GameState }) {
     root.position.set(p.x, p.y, p.z);
     root.rotation.y = p.rot + (P?.spinY ?? 0);
     // ragdoll tumble / get-up: whole body rotates; lying flat then pushing up
-    if (p.ragdoll) { s.roll = -p.tumble; root.rotation.x = s.roll; root.position.y += 0.4; }
+    if (p.ragdoll) { /* posed from the jointed ragdoll below */ }
     else if (p.move.kind === 'getup') { const u = Math.min(1, p.move.t / COMBAT.durations.getup!); const lie = -Math.PI / 2; s.roll = lerp(lie, 0, easeInOut(u)); root.rotation.x = s.roll; root.position.y += Math.sin(u * Math.PI) * 0.3 + (1 - u) * 0.3; }
     else root.rotation.x = 0;
+    if (!p.ragdoll) { root.rotation.z = 0; for (const j of [g.elL, g.elR, g.hipL, g.hipR, g.kneeL, g.kneeR, g.ankleL, g.ankleR]) if (j) { j.rotation.y = 0; j.rotation.z = 0; } }
 
     // --- terrain under each foot (relative to body ground) ---
     const onTerrain = Math.abs(p.y - heightAt(p.x, p.z)) < 0.35 && p.grounded && !p.climbing;
