@@ -58,10 +58,10 @@ function updateRagdoll(g:GameState,dt:number){const p=g.player;p.down+=dt;
   stepRagdoll(p.rag,ragdollWorld(g),dt);
   const pel=partPos(p.rag,'pelvis'),ch=partPos(p.rag,'chest');p.x=pel[0];p.z=pel[2];p.y=Math.max(surfaceAt(p.x,p.z,pel[1]),pel[1]-1.36);
   p.tumble=Math.atan2(Math.hypot(ch[0]-pel[0],ch[2]-pel[2]),ch[1]-pel[1]);p.rest=p.rag.still;
-  const settled=p.rag.still>.5||p.down>=COMBAT.ragdollWatchdog;
+  const settled=p.rag.still>COMBAT.ragdollSettle||p.down>=COMBAT.ragdollWatchdog;
   if(!settled)return;
   if(p.dead){startGameOver(g,'Felled in battle. The shadows claim you.');return;}
-  p.ragdoll=false;p.rag=null;p.y=surfaceAt(p.x,p.z,p.y+1);p.vy=0;p.kx=p.kz=0;p.grounded=true;p.move=newMove('getup');p.invulnerable=1.6;}
+  p.ragdoll=false;p.y=surfaceAt(p.x,p.z,p.y+1);p.vy=0;p.kx=p.kz=0;p.grounded=true;p.move=newMove('getup');p.invulnerable=1.6;}
 
 export function interact(g:GameState){const p=g.player;if(Math.hypot(p.x-CHEST.x,p.z-CHEST.z)<6){if(!g.doorOpen){say(g,'The seal holds. Defeat the fortress guardian.');return;}if(!g.boots){g.boots=true;say(g,'Winged Boots acquired · The wind will carry you forward.');}}}
 
